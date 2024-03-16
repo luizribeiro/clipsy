@@ -14,9 +14,6 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        devPackages = with pkgs; [
-          git
-        ];
         linuxDependencies = with pkgs; [
           xorg.libxcb
         ];
@@ -25,16 +22,25 @@
           apple_sdk.frameworks.Foundation
           libobjc
         ];
+        buildInputs = []
+          ++ pkgs.lib.optionals pkgs.stdenv.isLinux linuxDependencies
+          ++ pkgs.lib.optionals pkgs.stdenv.isDarwin darwinDependencies;
       in
       {
+        packages.default = pkgs.rustPlatform.buildRustPackage rec {
+          pname = "clipsy";
+          version = "0.1.0";
+          src = ./.;
+          cargoSha256 = "sha256-sazl9/CAImYLvokBiKZ+jzyp5Q8O6tF3z7tcUWSlaAA=";
+          inherit buildInputs;
+        };
         devShell = devenv.lib.mkShell {
           inherit inputs pkgs;
           modules = [
             ({ lib, pkgs, ... }: {
-              packages = devPackages
-              ++ lib.optionals pkgs.stdenv.isLinux linuxDependencies
-              ++ lib.optionals pkgs.stdenv.isDarwin darwinDependencies;
-
+              packages = buildInputs ++ (with pkgs; [
+                git
+              ]);
               languages.rust.enable = true;
             })
           ];
