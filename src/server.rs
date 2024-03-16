@@ -3,10 +3,8 @@ use clipboard::{ClipboardContext, ClipboardProvider};
 use tokio::io;
 use tokio::net::TcpListener;
 
-pub async fn start_server(port: u16) -> io::Result<()> {
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;
-
-    println!("Server listening on port {}", port);
+pub async fn start_server(addr: String) -> io::Result<()> {
+    let listener = TcpListener::bind(addr).await?;
 
     loop {
         let (mut socket, _) = listener.accept().await?;
