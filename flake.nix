@@ -24,8 +24,8 @@
             libobjc
           ];
           buildInputs = with nixpkgs.lib; [ ]
-          ++ optionals (hasSuffix "-linux" system) linuxDependencies
-          ++ optionals (hasSuffix "-darwin" system) darwinDependencies;
+          ++ optionals pkgs.stdenv.isLinux linuxDependencies
+          ++ optionals pkgs.stdenv.isDarwin darwinDependencies;
         in
         {
           packages.default = pkgs.rustPlatform.buildRustPackage {
