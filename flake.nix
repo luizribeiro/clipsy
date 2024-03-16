@@ -54,6 +54,11 @@
             enable = lib.mkEnableOption "Enables clipsy service";
           };
         };
+        baseConfig = {
+          nixpkgs.overlays = [
+            self.overlays.default
+          ];
+        };
       in
       {
         overlays.default = (final: prev: {
@@ -62,7 +67,7 @@
 
         nixosModules.darwin = { config, pkgs, lib, ... } @ args: {
           options = mkOptions args;
-          config = lib.mkIf config.services.clipsy.enable {
+          config = baseConfig // (lib.mkIf config.services.clipsy.enable {
             launchd.user.agents.clipsy = {
               serviceConfig.ProgramArguments = [
                 "${self.packages.${pkgs.system}.default}/bin/clipsy"
@@ -71,12 +76,12 @@
               serviceConfig.KeepAlive = true;
               serviceConfig.ProcessType = "Interactive";
             };
-          };
+          });
         };
 
         nixosModules.linux = { config, pkgs, lib, ... } @ args: {
           options = mkOptions args;
-          config = lib.mkIf config.services.clipsy.enable {
+          config = baseConfig // (lib.mkIf config.services.clipsy.enable {
             systemd.services.clipsy = {
               description = "Clipsy clipboard synchronization service";
               after = [ "network.target" ];
@@ -89,7 +94,7 @@
                 RestartSec = "30";
               };
             };
-          };
+          });
         };
       }
     );
