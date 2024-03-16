@@ -76,13 +76,17 @@ With the module loaded, you can enable `clipsy` as a service:
 }
 ```
 
-The module also installs an overlay so you can install `clipsy` to your
-system packages:
+If you setup the overlay `clipsy.overlays.default`, you will be able
+to install `clipsy` to your `PATH` as well (which is necessary for the
+neovim and tmux integrations):
 
 ```nix
-{ pkgs, ... }:
+{ pkgs, clipsy, ... }:
 
 {
+  nixpkgs.overlays = [
+    clipsy.overlays.default
+  ];
   environment.systemPackages = with pkgs; [ clipsy ];
 }
 ```
