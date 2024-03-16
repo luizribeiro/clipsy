@@ -22,14 +22,11 @@
           apple_sdk.frameworks.Foundation
           libobjc
         ];
-        buildInputs = []
-          ++ pkgs.lib.optionals pkgs.stdenv.isLinux linuxDependencies
-          ++ pkgs.lib.optionals pkgs.stdenv.isDarwin darwinDependencies;
+        buildInputs = with nixpkgs.lib; []
+          ++ optionals (hasSuffix "-linux" system) linuxDependencies
+          ++ optionals (hasSuffix "-darwin" system) darwinDependencies;
       in
       {
-        nixosModules.default = { ... }: {
-        };
-
         packages.default = pkgs.rustPlatform.buildRustPackage rec {
           pname = "clipsy";
           version = "0.1.0";
@@ -50,5 +47,22 @@
           ];
         };
       }
-    );
+    ) // {
+      nixosModules.darwin = { config, pkgs, lib, ... }: {
+        options.services.clipsy = {
+          enable = lib.mkEnableOption "Enables clipsy service";
+        };
+
+        config = lib.mkIf config.services.clipsy.enable {
+          launchd.user.agents.clipsy = {
+            serviceConfig.ProgramArguments = [
+              "${self.packages.${pkgs.system}.default}/bin/clipsy"
+              "serve"
+            ];
+            serviceConfig.KeepAlive = true;
+            serviceConfig.ProcessType = "Interactive";
+          };
+        };
+      };
+    };
 }
