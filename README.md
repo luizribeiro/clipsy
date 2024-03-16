@@ -29,3 +29,13 @@ Alternatively, you can also stream to your clipboard:
 ```
 cat somefile.txt | clipsy write
 ```
+
+## Developing
+
+We use [devenv](https://devenv.sh) and [direnv](https://direnv.net) to
+build, so simply run:
+
+```
+direnv allow
+cargo build
+```
