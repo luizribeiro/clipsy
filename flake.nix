@@ -27,6 +27,9 @@
           ++ pkgs.lib.optionals pkgs.stdenv.isDarwin darwinDependencies;
       in
       {
+        nixosModules.default = { ... }: {
+        };
+
         packages.default = pkgs.rustPlatform.buildRustPackage rec {
           pname = "clipsy";
           version = "0.1.0";
@@ -34,6 +37,7 @@
           cargoSha256 = "sha256-sazl9/CAImYLvokBiKZ+jzyp5Q8O6tF3z7tcUWSlaAA=";
           inherit buildInputs;
         };
+
         devShell = devenv.lib.mkShell {
           inherit inputs pkgs;
           modules = [
