@@ -20,6 +20,13 @@ pub async fn start_server(addr: String) -> io::Result<()> {
                     .await
                     .unwrap();
             }
+            Ok(Message::ClipboardRead) => {
+                let mut ctx: ClipboardContext = ClipboardProvider::new().unwrap();
+                let content = ctx.get_contents().unwrap();
+                send_message(&mut socket, Message::ClipboardReadResponse { content })
+                    .await
+                    .unwrap();
+            }
             Err(e) => println!("Error reading message: {}", e),
             _ => (),
         }

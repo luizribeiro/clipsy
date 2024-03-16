@@ -6,6 +6,8 @@ use tokio::net::TcpStream;
 #[derive(Serialize, Deserialize)]
 pub enum Message {
     ClipboardUpdate { content: String },
+    ClipboardRead,
+    ClipboardReadResponse { content: String },
     Acknowledgment,
 }
 

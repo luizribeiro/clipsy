@@ -30,6 +30,11 @@ enum Commands {
         /// The content to write to the server's clipboard
         content: Option<String>,
     },
+    /// Reads content from the clipsy server
+    Read {
+        #[arg(short, long, default_value = "localhost")]
+        server: String,
+    },
 }
 
 #[tokio::main]
