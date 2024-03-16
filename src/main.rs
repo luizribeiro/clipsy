@@ -10,7 +10,7 @@ use tokio::io;
 #[command(name = "clipsy")]
 #[command(about = "A clipboard synchronizer", long_about = None)]
 struct Cli {
-    #[arg(short, long, default_value = "7878")]
+    #[arg(short, long, default_value = "52697")]
     port: u16,
     #[command(subcommand)]
     command: Commands,
