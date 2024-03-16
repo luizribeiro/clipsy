@@ -34,11 +34,13 @@ cat somefile.txt | clipsy write
 
 <details>
 <summary><b>Building from Source</b></summary>
+
 You can install with Rust's `cargo`:
 
 ```
 cargo install --git https://github.com/luizribeiro/clipsy
 ```
+
 </details>
 
 <details>
@@ -84,13 +86,16 @@ system packages:
   environment.systemPackages = with pkgs; [ clipsy ];
 }
 ```
+
 </details>
 
 <details>
 <summary><b>nix-darwin</b></summary>
+
 The instructions are the same as NixOS', with the difference that the
 module is `clipsy.nixosModules.darwin` instead of
 `clipsy.nixosModules.linux`.
+
 </details>
 
 ## Integrations
