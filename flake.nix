@@ -48,6 +48,10 @@
         };
       }
     ) // {
+      overlays.default = (final: prev: {
+        clipsy = self.packages.${final.system}.default;
+      });
+
       nixosModules.darwin = { config, pkgs, lib, ... }: {
         options.services.clipsy = {
           enable = lib.mkEnableOption "Enables clipsy service";
