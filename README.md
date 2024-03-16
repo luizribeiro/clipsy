@@ -30,6 +30,69 @@ Alternatively, you can also stream to your clipboard:
 cat somefile.txt | clipsy write
 ```
 
+## Installation
+
+<details>
+<summary><b>Building from Source</b></summary>
+You can install with Rust's `cargo`:
+
+```
+cargo install --git https://github.com/luizribeiro/clipsy
+```
+</details>
+
+<details>
+<summary><b>NixOS</b></summary>
+
+On your `flake.nix`, add `clipsy` as an `input`
+
+```nix
+{
+  inputs.sops-nix.url = "github:luizribeiro/clipsy;
+
+  outputs = { self, nixpkgs, clipsy }: {
+    # change `yourhostname` to your actual hostname
+    nixosConfigurations.yourhostname = nixpkgs.lib.nixosSystem {
+      # customize to your system
+      system = "x86_64-linux";
+      modules = [
+        ./configuration.nix
+        clipsy.nixosModules.linux
+      ];
+    };
+  };
+}
+```
+
+With the module loaded, you can enable `clipsy` as a service:
+
+```nix
+{ ... }:
+
+{
+  services.clipsy.enable = true;
+}
+```
+
+The module also installs an overlay so you can install `clipsy` to your
+system packages:
+
+```nix
+{ pkgs, ... }:
+
+{
+  environment.systemPackages = with pkgs; [ clipsy ];
+}
+```
+</details>
+
+<details>
+<summary><b>nix-darwin</b></summary>
+The instructions are the same as NixOS', with the difference that the
+module is `clipsy.nixosModules.darwin` instead of
+`clipsy.nixosModules.linux`.
+</details>
+
 ## Integrations
 
 <details>
