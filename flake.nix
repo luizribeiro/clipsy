@@ -34,6 +34,8 @@
             src = ./.;
             cargoSha256 = "sha256-sazl9/CAImYLvokBiKZ+jzyp5Q8O6tF3z7tcUWSlaAA=";
             inherit buildInputs;
+            nativeBuildInputs = [ ]
+            ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.python3 ];
           };
 
           devShell = devenv.lib.mkShell {
