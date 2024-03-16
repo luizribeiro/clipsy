@@ -3,9 +3,8 @@ mod msg;
 mod server;
 
 use clap::{Parser, Subcommand};
-use client::start_client;
 use server::start_server;
-use tokio::io::{self, AsyncReadExt};
+use tokio::io;
 
 #[derive(Debug, Parser)] // requires `derive` feature
 #[command(name = "clipsy")]
@@ -42,19 +41,7 @@ async fn main() -> io::Result<()> {
             println!("Server listening on {}", bind);
             start_server(bind).await?;
         }
-        Commands::Write {
-            server,
-            content: cli_content,
-        } => {
-            let address = format!("{}:{}", server, args.port);
-            let mut content = String::new();
-            if cli_content.is_none() {
-                io::stdin().read_to_string(&mut content).await.unwrap();
-            } else {
-                content = cli_content.unwrap();
-            }
-            start_client(&address, content).await?;
-        }
+        _ => client::handle_command(args).await?,
     }
 
     Ok(())
