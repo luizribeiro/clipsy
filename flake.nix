@@ -47,26 +47,50 @@
           ];
         };
       }
-    ) // {
-      overlays.default = (final: prev: {
-        clipsy = self.packages.${final.system}.default;
-      });
-
-      nixosModules.darwin = { config, pkgs, lib, ... }: {
-        options.services.clipsy = {
-          enable = lib.mkEnableOption "Enables clipsy service";
-        };
-
-        config = lib.mkIf config.services.clipsy.enable {
-          launchd.user.agents.clipsy = {
-            serviceConfig.ProgramArguments = [
-              "${self.packages.${pkgs.system}.default}/bin/clipsy"
-              "serve"
-            ];
-            serviceConfig.KeepAlive = true;
-            serviceConfig.ProcessType = "Interactive";
+    ) // (
+      let
+        mkOptions = { lib, ... }: {
+          services.clipsy = {
+            enable = lib.mkEnableOption "Enables clipsy service";
           };
         };
-      };
-    };
+      in
+      {
+        overlays.default = (final: prev: {
+          clipsy = self.packages.${final.system}.default;
+        });
+
+        nixosModules.darwin = { config, pkgs, lib, ... } @ args: {
+          options = mkOptions args;
+          config = lib.mkIf config.services.clipsy.enable {
+            launchd.user.agents.clipsy = {
+              serviceConfig.ProgramArguments = [
+                "${self.packages.${pkgs.system}.default}/bin/clipsy"
+                "serve"
+              ];
+              serviceConfig.KeepAlive = true;
+              serviceConfig.ProcessType = "Interactive";
+            };
+          };
+        };
+
+        nixosModules.linux = { config, pkgs, lib, ... } @ args: {
+          options = mkOptions args;
+          config = lib.mkIf config.services.clipsy.enable {
+            systemd.services.clipsy = {
+              description = "Clipsy clipboard synchronization service";
+              after = [ "network.target" ];
+              wantedBy = [ "multi-user.target" ];
+              serviceConfig = {
+                Type = "simple";
+                ExecStart =
+                  "${self.packages.${pkgs.system}.default}/bin/clipsy serve";
+                Restart = "always";
+                RestartSec = "30";
+              };
+            };
+          };
+        };
+      }
+    );
 }
