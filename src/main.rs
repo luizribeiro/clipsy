@@ -2,7 +2,7 @@ mod client;
 mod msg;
 mod server;
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use server::start_server;
 use tokio::io;
 
@@ -16,6 +16,12 @@ struct Cli {
     command: Commands,
 }
 
+#[derive(Args, Debug)]
+struct ClientArgs {
+    #[arg(short, long, default_value = "localhost")]
+    server: String,
+}
+
 #[derive(Debug, Subcommand)]
 enum Commands {
     /// Starts the clipsy server
@@ -25,15 +31,15 @@ enum Commands {
     },
     /// Writes content to the clipsy server
     Write {
-        #[arg(short, long, default_value = "localhost")]
-        server: String,
+        #[command(flatten)]
+        client_args: ClientArgs,
         /// The content to write to the server's clipboard
         content: Option<String>,
     },
     /// Reads content from the clipsy server
     Read {
-        #[arg(short, long, default_value = "localhost")]
-        server: String,
+        #[command(flatten)]
+        client_args: ClientArgs,
     },
 }
 

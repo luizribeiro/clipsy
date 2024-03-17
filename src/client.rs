@@ -1,12 +1,12 @@
 use crate::msg::{read_message, send_message, Message};
-use crate::{Cli, Commands};
+use crate::{Cli, ClientArgs, Commands};
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 pub async fn handle_command(args: Cli) -> io::Result<()> {
     match args.command {
         Commands::Write {
-            server,
+            client_args: ClientArgs { server },
             content: cli_content,
         } => {
             let mut data = String::new();
@@ -28,7 +28,9 @@ pub async fn handle_command(args: Cli) -> io::Result<()> {
                 _ => panic!("Invalid message received"),
             }
         }
-        Commands::Read { server } => {
+        Commands::Read {
+            client_args: ClientArgs { server },
+        } => {
             let mut stream = connect_to_server(&server, args.port).await?;
             send_message(&mut stream, Message::ClipboardRead)
                 .await
