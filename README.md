@@ -140,3 +140,7 @@ build, so simply run:
 direnv allow
 cargo build
 ```
+
+## TODOs
+
+* Fix crash when clipboard contains image
