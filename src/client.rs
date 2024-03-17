@@ -11,15 +11,13 @@ pub async fn handle_command(args: Cli) -> io::Result<()> {
         } => {
             let mut data = String::new();
             if cli_content.is_none() {
-                io::stdin().read_to_string(&mut data).await.unwrap();
+                io::stdin().read_to_string(&mut data).await?;
             } else {
                 data = cli_content.unwrap();
             }
 
             let mut stream = connect_to_server(&server, args.port).await?;
-            send_message(&mut stream, Message::ClipboardUpdate { content: data })
-                .await
-                .unwrap();
+            send_message(&mut stream, Message::ClipboardUpdate { content: data }).await?;
             match read_message(&mut stream).await {
                 Ok(Message::Acknowledgment) => {
                     println!("Clipboard update acknowledged by server.");
@@ -32,9 +30,7 @@ pub async fn handle_command(args: Cli) -> io::Result<()> {
             client_args: ClientArgs { server },
         } => {
             let mut stream = connect_to_server(&server, args.port).await?;
-            send_message(&mut stream, Message::ClipboardRead)
-                .await
-                .unwrap();
+            send_message(&mut stream, Message::ClipboardRead).await?;
             match read_message(&mut stream).await {
                 Ok(Message::ClipboardReadResponse { content }) => {
                     io::stdout().write_all(content.as_bytes()).await?;
