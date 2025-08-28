@@ -18,14 +18,8 @@
           linuxDependencies = with pkgs; [
             xorg.libxcb
           ];
-          darwinDependencies = with pkgs.darwin; [
-            apple_sdk.frameworks.AppKit
-            apple_sdk.frameworks.Foundation
-            libobjc
-          ];
           buildInputs = with nixpkgs.lib; [ ]
-          ++ optionals pkgs.stdenv.isLinux linuxDependencies
-          ++ optionals pkgs.stdenv.isDarwin darwinDependencies;
+          ++ optionals pkgs.stdenv.isLinux linuxDependencies;
         in
         {
           packages.default = pkgs.rustPlatform.buildRustPackage {
