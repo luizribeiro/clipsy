@@ -59,7 +59,7 @@
       in
       {
         overlays.default = (final: prev: {
-          clipsy = self.packages.${final.system}.default;
+          clipsy = self.packages.${final.stdenv.hostPlatform.system}.default;
         });
 
         nixosModules.darwin = { config, pkgs, lib, ... } @ args: {
@@ -67,7 +67,7 @@
           config = baseConfig // (lib.mkIf config.services.clipsy.enable {
             launchd.user.agents.clipsy = {
               serviceConfig.ProgramArguments = [
-                "${self.packages.${pkgs.system}.default}/bin/clipsy"
+                "${self.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/clipsy"
                 "serve"
               ];
               serviceConfig.KeepAlive = true;
@@ -86,7 +86,7 @@
               serviceConfig = {
                 Type = "simple";
                 ExecStart =
-                  "${self.packages.${pkgs.system}.default}/bin/clipsy serve";
+                  "${self.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/clipsy serve";
                 Restart = "always";
                 RestartSec = "30";
               };
