@@ -16,7 +16,7 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
           linuxDependencies = with pkgs; [
-            xorg.libxcb
+            libxcb
           ];
           buildInputs = with nixpkgs.lib; [ ]
           ++ optionals pkgs.stdenv.isLinux linuxDependencies;
