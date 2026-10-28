@@ -19,7 +19,7 @@
             libxcb
           ];
           buildInputs = with nixpkgs.lib; [ ]
-          ++ optionals pkgs.stdenv.isLinux linuxDependencies;
+          ++ optionals pkgs.stdenv.hostPlatform.isLinux linuxDependencies;
         in
         {
           packages.default = pkgs.rustPlatform.buildRustPackage {
@@ -29,7 +29,7 @@
             cargoHash = "sha256-KqSWQNbeWVVQinszNj+a6nxFuo0zf5VLqxnkRx9j1xU=";
             inherit buildInputs;
             nativeBuildInputs = [ ]
-            ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.python3 ];
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.python3 ];
           };
 
           devShell = devenv.lib.mkShell {
