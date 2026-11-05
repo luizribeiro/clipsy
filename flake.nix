@@ -146,15 +146,15 @@
         });
 
         nixosModules.linux = clipsyModule (clipsy: {
-          systemd.services.clipsy = {
-            description = "Clipsy clipboard synchronization service";
-            after = [ "network.target" ];
-            wantedBy = [ "multi-user.target" ];
+          systemd.user.services.clipsy = {
+            description = "clipsy clipboard server";
+            wantedBy = [ "graphical-session.target" ];
+            partOf = [ "graphical-session.target" ];
+            after = [ "graphical-session.target" ];
             serviceConfig = {
-              Type = "simple";
               ExecStart = "${clipsy} serve";
               Restart = "always";
-              RestartSec = "30";
+              RestartSec = 5;
             };
           };
         });
