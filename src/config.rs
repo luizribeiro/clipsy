@@ -4,6 +4,7 @@ use iroh::{EndpointId, RelayUrl};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::ffi::OsString;
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 
 const SYSTEM_CONFIG: &str = "/etc/clipsy/config.toml";
@@ -32,6 +33,21 @@ pub struct Client {
 
 fn allowed() -> bool {
     true
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServerTarget {
+    pub id: EndpointId,
+    pub direct_addr: Option<SocketAddr>,
+}
+
+impl From<EndpointId> for ServerTarget {
+    fn from(id: EndpointId) -> Self {
+        Self {
+            id,
+            direct_addr: None,
+        }
+    }
 }
 
 impl Client {
@@ -89,27 +105,45 @@ impl Config {
             .map(|(name, client)| (name.as_str(), client))
     }
 
-    pub fn resolve_server(&self, choice: Option<&str>) -> Result<EndpointId> {
-        let name = match (choice.filter(|c| !c.is_empty()), &self.default_server) {
-            (Some(choice), _) => choice,
-            (None, Some(default)) => default,
-            (None, None) => return self.only_server(),
+    pub fn resolve_server(&self, choice: Option<&str>) -> Result<ServerTarget> {
+        let Some(choice) = choice.filter(|c| !c.is_empty()) else {
+            return match &self.default_server {
+                Some(name) => self.named_server(name),
+                None => self.only_server(),
+            };
         };
-        if let Some(id) = self.servers.get(name) {
-            return Ok(*id);
-        }
-        name.parse().map_err(|_| {
-            anyhow::anyhow!(
-                "unknown server `{name}`; known servers: {}",
-                self.server_names()
-            )
+        let (server, direct_addr) = match choice.split_once('@') {
+            Some((server, addr)) => {
+                let addr = addr
+                    .parse()
+                    .with_context(|| format!("`{addr}` is not an IP:PORT address"))?;
+                (server, Some(addr))
+            }
+            None => (choice, None),
+        };
+        Ok(ServerTarget {
+            direct_addr,
+            ..self.named_server(server)?
         })
     }
 
-    fn only_server(&self) -> Result<EndpointId> {
+    fn named_server(&self, name: &str) -> Result<ServerTarget> {
+        if let Some(id) = self.servers.get(name) {
+            return Ok((*id).into());
+        }
+        let id = name.parse::<EndpointId>().map_err(|e| {
+            anyhow::anyhow!(
+                "unknown server `{name}` ({e}); known servers: {}",
+                self.server_names()
+            )
+        })?;
+        Ok(id.into())
+    }
+
+    fn only_server(&self) -> Result<ServerTarget> {
         let mut ids = self.servers.values();
         match (ids.next(), ids.next()) {
-            (Some(id), None) => Ok(*id),
+            (Some(id), None) => Ok((*id).into()),
             (None, _) => bail!("no server configured; pass --server or set CLIPSY_SERVER"),
             _ => bail!(
                 "several servers configured ({}); pass --server, set CLIPSY_SERVER or set default_server",
@@ -260,7 +294,7 @@ desktop = "{desktop}"
             config.key_file,
             Some(PathBuf::from("/run/secrets/clipsy-key"))
         );
-        assert_eq!(config.resolve_server(None).unwrap(), laptop());
+        assert_eq!(config.resolve_server(None).unwrap().id, laptop());
         assert_eq!(config.client(&devbox()).unwrap().0, "devbox");
         assert!(!config.client(&sandbox()).unwrap().1.read);
     }
@@ -287,7 +321,10 @@ desktop = "{desktop}"
 
         let config = Config::load(Some(&path)).unwrap();
 
-        assert_eq!(config.resolve_server(Some("desktop")).unwrap(), desktop());
+        assert_eq!(
+            config.resolve_server(Some("desktop")).unwrap().id,
+            desktop()
+        );
     }
 
     #[test]
@@ -362,7 +399,10 @@ desktop = "{desktop}"
             &[("laptop", laptop()), ("desktop", desktop())],
         );
 
-        assert_eq!(config.resolve_server(Some("desktop")).unwrap(), desktop());
+        assert_eq!(
+            config.resolve_server(Some("desktop")).unwrap().id,
+            desktop()
+        );
     }
 
     #[test]
@@ -371,7 +411,7 @@ desktop = "{desktop}"
 
         let chosen = config.resolve_server(Some(&desktop().to_string())).unwrap();
 
-        assert_eq!(chosen, desktop());
+        assert_eq!(chosen, desktop().into());
     }
 
     #[test]
@@ -387,7 +427,7 @@ desktop = "{desktop}"
     fn single_server_needs_no_default() {
         let config = servers_only(None, &[("laptop", laptop())]);
 
-        assert_eq!(config.resolve_server(None).unwrap(), laptop());
+        assert_eq!(config.resolve_server(None).unwrap().id, laptop());
     }
 
     #[test]
@@ -533,7 +573,7 @@ desktop = "{desktop}"
             &[("laptop", laptop()), ("desktop", desktop())],
         );
 
-        assert_eq!(config.resolve_server(Some("")).unwrap(), laptop());
+        assert_eq!(config.resolve_server(Some("")).unwrap().id, laptop());
     }
 
     #[test]
@@ -564,7 +604,7 @@ desktop = "{desktop}"
         let config =
             Config::discover(env(&[("HOME", "/nonexistent"), ("XDG_CONFIG_HOME", xdg)])).unwrap();
 
-        assert_eq!(config.resolve_server(None).unwrap(), laptop());
+        assert_eq!(config.resolve_server(None).unwrap().id, laptop());
     }
 
     #[test]
@@ -588,5 +628,79 @@ desktop = "{desktop}"
         )
         .unwrap();
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn named_server_has_no_direct_address() {
+        let config = servers_only(None, &[("laptop", laptop())]);
+
+        assert_eq!(
+            config.resolve_server(Some("laptop")).unwrap().direct_addr,
+            None
+        );
+    }
+
+    #[test]
+    fn explicit_choice_can_carry_a_direct_address() {
+        let choice = format!("{}@192.168.1.20:41641", desktop());
+
+        let target = Config::default().resolve_server(Some(&choice)).unwrap();
+
+        assert_eq!(target.id, desktop());
+        assert_eq!(
+            target.direct_addr,
+            Some("192.168.1.20:41641".parse().unwrap())
+        );
+    }
+
+    #[test]
+    fn direct_address_accepts_ipv6() {
+        let choice = format!("{}@[fd42:dead:beef::3]:41641", desktop());
+
+        let target = Config::default().resolve_server(Some(&choice)).unwrap();
+
+        assert_eq!(
+            target.direct_addr,
+            Some("[fd42:dead:beef::3]:41641".parse().unwrap())
+        );
+    }
+
+    #[test]
+    fn malformed_direct_address_names_the_address() {
+        let config = Config::default();
+
+        for bad in ["desktop.local", "", "10.0.0.7"] {
+            let choice = format!("{}@{bad}", desktop());
+
+            let err = config.resolve_server(Some(&choice)).unwrap_err();
+
+            assert!(err.to_string().contains(&format!("`{bad}`")), "{err}");
+        }
+    }
+
+    #[test]
+    fn server_name_can_carry_a_direct_address() {
+        let config = servers_only(None, &[("laptop", laptop())]);
+
+        let target = config
+            .resolve_server(Some("laptop@10.0.0.7:41641"))
+            .unwrap();
+
+        assert_eq!(target.id, laptop());
+        assert_eq!(target.direct_addr, Some("10.0.0.7:41641".parse().unwrap()));
+    }
+
+    #[test]
+    fn unknown_server_with_valid_address_is_still_unknown() {
+        let config = servers_only(None, &[("laptop", laptop())]);
+
+        let err = config
+            .resolve_server(Some("garbage@10.0.0.7:41641"))
+            .unwrap_err();
+
+        assert!(
+            err.to_string().contains("unknown server `garbage`"),
+            "{err}"
+        );
     }
 }

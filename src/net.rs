@@ -1,3 +1,4 @@
+use crate::config::ServerTarget;
 use crate::protocol::{read_message, write_message, Request, Response, ALPN};
 use anyhow::{anyhow, Context, Result};
 use iroh::endpoint::{presets, ApplicationClose, Connection, ConnectionError};
@@ -54,10 +55,14 @@ impl Network {
         Ok(endpoint)
     }
 
-    pub fn server_addr(&self, id: EndpointId) -> EndpointAddr {
-        match self {
-            Self::Relay(url) => EndpointAddr::new(id).with_relay_url(url.clone()),
-            Self::N0 | Self::LocalOnly => EndpointAddr::new(id),
+    pub fn server_addr(&self, target: ServerTarget) -> EndpointAddr {
+        let addr = match self {
+            Self::Relay(url) => EndpointAddr::new(target.id).with_relay_url(url.clone()),
+            Self::N0 | Self::LocalOnly => EndpointAddr::new(target.id),
+        };
+        match target.direct_addr {
+            Some(direct) => addr.with_ip_addr(direct),
+            None => addr,
         }
     }
 }
@@ -141,7 +146,7 @@ mod tests {
 
     #[test]
     fn relay_network_dials_server_through_the_relay() {
-        let addr = Network::Relay(relay()).server_addr(laptop());
+        let addr = Network::Relay(relay()).server_addr(laptop().into());
 
         assert_eq!(addr.id, laptop());
         assert_eq!(addr.relay_urls().collect::<Vec<_>>(), [&relay()]);
@@ -150,10 +155,40 @@ mod tests {
 
     #[test]
     fn n0_network_leaves_address_lookup_to_dns() {
-        let addr = Network::N0.server_addr(laptop());
+        let addr = Network::N0.server_addr(laptop().into());
 
         assert_eq!(addr.id, laptop());
         assert!(addr.is_empty());
+    }
+
+    #[test]
+    fn direct_address_is_dialed_alongside_the_relay() {
+        let target = ServerTarget {
+            id: laptop(),
+            direct_addr: Some("10.0.0.7:41641".parse().unwrap()),
+        };
+
+        let addr = Network::Relay(relay()).server_addr(target);
+
+        assert_eq!(addr.relay_urls().collect::<Vec<_>>(), [&relay()]);
+        assert_eq!(
+            addr.ip_addrs().collect::<Vec<_>>(),
+            [&"10.0.0.7:41641".parse::<std::net::SocketAddr>().unwrap()]
+        );
+    }
+
+    #[test]
+    fn local_only_dials_just_the_direct_address() {
+        let direct: std::net::SocketAddr = "127.0.0.1:41641".parse().unwrap();
+        let target = ServerTarget {
+            id: laptop(),
+            direct_addr: Some(direct),
+        };
+
+        let addr = Network::LocalOnly.server_addr(target);
+
+        assert_eq!(addr.relay_urls().count(), 0);
+        assert_eq!(addr.ip_addrs().collect::<Vec<_>>(), [&direct]);
     }
 
     #[tokio::test]
