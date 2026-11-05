@@ -26,7 +26,7 @@
             pname = "clipsy";
             version = "0.1.0";
             src = ./.;
-            cargoHash = "sha256-KqSWQNbeWVVQinszNj+a6nxFuo0zf5VLqxnkRx9j1xU=";
+            cargoHash = "sha256-dQUyThZxNfTzCxq0s9VZe631i1ijgE1bl4lTXMaxgs4=";
             inherit buildInputs;
             nativeBuildInputs = [ ]
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.python3 ];
