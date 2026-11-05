@@ -28,6 +28,11 @@
             src = ./.;
             cargoHash = "sha256-dQUyThZxNfTzCxq0s9VZe631i1ijgE1bl4lTXMaxgs4=";
             inherit buildInputs;
+            # Binding an iroh endpoint segfaults inside the macOS build sandbox.
+            cargoTestFlags = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ "--lib" ];
+            checkFlags = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
+              "--skip=net::tests::binds_with_the_given_identity"
+            ];
             nativeBuildInputs = [ ]
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.python3 ];
           };
