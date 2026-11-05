@@ -413,12 +413,11 @@ fn serve_announces_its_id_and_stops_cleanly_on_sigterm() {
         .spawn()
         .unwrap();
 
+    let mut stdout = std::io::BufReader::new(child.stdout.take().unwrap());
     let mut announcement = String::new();
-    std::io::BufRead::read_line(
-        &mut std::io::BufReader::new(child.stdout.take().unwrap()),
-        &mut announcement,
-    )
-    .unwrap();
+    let mut listening = String::new();
+    std::io::BufRead::read_line(&mut stdout, &mut announcement).unwrap();
+    std::io::BufRead::read_line(&mut stdout, &mut listening).unwrap();
     Command::new("kill")
         .args(["-TERM", &child.id().to_string()])
         .status()
@@ -436,5 +435,9 @@ fn serve_announces_its_id_and_stops_cleanly_on_sigterm() {
     };
 
     assert_eq!(announcement.trim(), expected);
+    assert!(
+        listening.starts_with("listening on UDP port "),
+        "{listening}"
+    );
     assert!(status.success(), "{status}");
 }

@@ -120,6 +120,9 @@ async fn serve(context: Context) -> Result<()> {
         .bind(context.secret()?, vec![ALPN.to_vec()])
         .await?;
     println!("serving clipboard as {}", endpoint.id());
+    for socket in endpoint.bound_sockets() {
+        println!("listening on UDP port {} ({socket})", socket.port());
+    }
     let config_path = context.config_path;
     let service = ClipboardService::new(
         Arc::new(SystemClipboard),
