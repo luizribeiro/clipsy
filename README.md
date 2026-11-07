@@ -1,146 +1,89 @@
 # 📋 clipsy
 
-Sync your clipboard across hosts.
+clipsy helps you keep your clipboard in sync across your machines with
+[iroh](https://iroh.computer), on Linux or macOS. Copy
+something in nvim or tmux on a machine you SSH into and it lands on the
+clipboard of the machine you're sitting at.
 
-## Usage
+Some people share their clipboard over an SSH tunnel, but that only
+works in the first ssh session to a host, and only while that session is
+open, so cron jobs and agents can't use it. With iroh, machines dial each
+other by public key, so there are no ports to open and no tunnels.
 
-Start the server on your laptop:
+If you only copy from an interactive shell, OSC 52 might be all you need.
+See [how clipsy compares](docs/alternatives.md).
+
+## Install
 
 ```bash
-clipsy serve
-```
-
-Then setup your SSH to forward port 52697 by adding this to your
-`~/.ssh/config`:
-
-```
-Host *
-  RemoteForward 52697 127.0.0.1:52697
-```
-
-Then, from the remote host you can write to your clipboard with:
-
-```
-clipsy write foobar
-```
-
-Alternatively, you can also stream to your clipboard:
-
-```
-cat somefile.txt | clipsy write
-```
-
-## Installation
-
-<details>
-<summary><b>Building from Source</b></summary>
-
-You can install with Rust's `cargo`:
-
-```
 cargo install --git https://github.com/luizribeiro/clipsy
 ```
 
-</details>
+Or with Nix, see [docs/nix.md](docs/nix.md).
 
-<details>
-<summary><b>NixOS</b></summary>
+## Quick start
 
-On your `flake.nix`, add `clipsy` as an `input`
+Say you're on your `laptop` and you ssh into a `devbox`. The laptop has
+the clipboard you care about, so it runs the server.
 
-```nix
-{
-  inputs.sops-nix.url = "github:luizribeiro/clipsy;
+Get the node id of each machine:
 
-  outputs = { self, nixpkgs, clipsy }: {
-    # change `yourhostname` to your actual hostname
-    nixosConfigurations.yourhostname = nixpkgs.lib.nixosSystem {
-      # customize to your system
-      system = "x86_64-linux";
-      modules = [
-        ./configuration.nix
-        clipsy.nixosModules.linux
-      ];
-    };
-  };
-}
+```bash
+clipsy id
 ```
 
-With the module loaded, you can enable `clipsy` as a service:
+On the laptop, in `~/.config/clipsy/config.toml`:
 
-```nix
-{ ... }:
-
-{
-  services.clipsy.enable = true;
-}
+```toml
+[clients.devbox]
+id = "<devbox's node id>"
+read = true
+write = true
 ```
 
-If you setup the overlay `clipsy.overlays.default`, you will be able
-to install `clipsy` to your `PATH` as well (which is necessary for the
-neovim and tmux integrations):
+On the devbox:
 
-```nix
-{ pkgs, clipsy, ... }:
+```toml
+default_server = "laptop"
 
-{
-  nixpkgs.overlays = [
-    clipsy.overlays.default
-  ];
-  environment.systemPackages = with pkgs; [ clipsy ];
-}
+[servers]
+laptop = "<laptop's node id>"
 ```
 
-</details>
+Run `clipsy serve` on the laptop, and then on the devbox:
 
-<details>
-<summary><b>nix-darwin</b></summary>
-
-The instructions are the same as NixOS', with the difference that the
-module is `clipsy.nixosModules.darwin` instead of
-`clipsy.nixosModules.linux`.
-
-</details>
-
-## Integrations
-
-<details>
-<summary><b>neovim</b></summary>
-
-With [vim-plug](https://github.com/junegunn/vim-plug), simply add to your config:
-
+```bash
+clipsy write foobar
+cat somefile.txt | clipsy write
+clipsy read
 ```
+
+Node ids are public keys, so you can keep these configs in your dotfiles.
+
+## nvim and tmux
+
+```vim
+" vim-plug
 Plug 'luizribeiro/clipsy'
 ```
 
-And anything copied through the registers `+` and `*` will be automatically synced
-to your clipsy server.
-</details>
-
-<details>
-<summary><b>tmux</b></summary>
-
-With [tpm](https://github.com/tmux-plugins/tpm) (Tmux Plugin Manager),
-simply add to your config:
-
 ```
+# tpm
 set -g @plugin 'luizribeiro/clipsy'
 ```
 
-And anything copied through tmux will be automatically synced to your
-clipsy server.
-</details>
+With these, yanking in nvim (the `+` and `*` registers) and copying in
+tmux go to the server. They need `clipsy` on your `PATH`.
 
-## Developing
+## Docs
 
-We use [devenv](https://devenv.sh) and [direnv](https://direnv.net) to
-build, so simply run:
+- [More than one server](docs/multiple-servers.md)
+- [Config](docs/config.md)
+- [Security](docs/security.md)
+- [Nix](docs/nix.md)
+- [How clipsy compares](docs/alternatives.md)
+- [Hacking on it](docs/hacking.md)
 
-```
-direnv allow
-cargo build
-```
+## License
 
-## TODOs
-
-* Fix crash when clipboard contains image
+MIT, see [LICENSE.md](LICENSE.md).
