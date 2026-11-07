@@ -9,8 +9,8 @@ The flake (`github:luizribeiro/clipsy`) has modules for NixOS
 # on a server
 services.clipsy.enable = true;
 services.clipsy.allowedClients = {
-  devbox.id = "<node id>";
-  ci = { id = "<node id>"; read = false; };   # write-only
+  devbox = { id = "<node id>"; read = true; };
+  ci.id = "<node id>";   # write-only
 };
 
 # on a client

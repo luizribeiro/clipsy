@@ -8,8 +8,9 @@ doesn't protect:
 - The server only lets in node ids listed in its config. Everyone else is
   refused, and so is everyone if the config doesn't parse.
 - `read` and `write` are separate permissions per client. `read` gives
-  that client whatever is on your clipboard, so turn it off for machines
-  that only need to send things your way (`read = false`).
+  that client whatever is on your clipboard, so it is off unless you set
+  `read = true`. Leave it off for machines that only need to send things
+  your way.
 - Unlike an SSH reverse forward, the server is reachable whenever it's
   running, not only while you're logged in. But only by machines holding
   a listed key. If one of those keys leaks, it has that client's

@@ -18,8 +18,8 @@ let
       };
       read = mkOption {
         type = types.bool;
-        default = true;
-        description = "Whether the client may read this machine's clipboard.";
+        default = false;
+        description = "Whether the client may read this machine's clipboard. Off by default, since the clipboard often holds secrets.";
       };
       write = mkOption {
         type = types.bool;

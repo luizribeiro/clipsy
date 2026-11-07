@@ -322,6 +322,11 @@ async fn write_only_client_is_told_it_cannot_read() {
         "{}",
         stderr(&output)
     );
+    assert!(
+        stderr(&output).contains("`read = true`"),
+        "{}",
+        stderr(&output)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

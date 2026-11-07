@@ -25,7 +25,7 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 pub struct Client {
     pub id: EndpointId,
-    #[serde(default = "allowed")]
+    #[serde(default)]
     pub read: bool,
     #[serde(default = "allowed")]
     pub write: bool,
@@ -338,12 +338,12 @@ desktop = "{desktop}"
     }
 
     #[test]
-    fn permissions_default_to_allowed() {
+    fn read_is_opt_in_and_write_is_on_by_default() {
         let config = Config::parse(&format!("[clients.devbox]\nid = \"{}\"\n", devbox())).unwrap();
 
         let (_, client) = config.client(&devbox()).unwrap();
 
-        assert!(client.read && client.write);
+        assert!(!client.read && client.write);
     }
 
     #[test]

@@ -53,8 +53,8 @@
         services.clipsy = {
           enable = true;
           allowedClients = {
-            devbox.id = devboxId;
-            sandbox = { id = sandboxId; read = false; };
+            devbox = { id = devboxId; read = true; };
+            sandbox.id = sandboxId;
           };
         };
         programs.clipsy = {

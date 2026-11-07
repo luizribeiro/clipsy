@@ -192,15 +192,19 @@ async fn unknown_client_is_refused_with_its_id() {
 #[tokio::test]
 async fn write_only_client_cannot_read() {
     let sandbox = Machine::new().await;
-    let config = client_entry("sandbox", sandbox.id(), false, true);
-    let laptop = Server::with_memory("password123", config).await;
+    let explicit = client_entry("sandbox", sandbox.id(), false, true);
+    let by_default = format!("[clients.sandbox]\nid = \"{}\"\n", sandbox.id());
 
-    assert_eq!(sandbox.read(&laptop).await.unwrap(), Response::Denied);
-    assert_eq!(
-        sandbox.write(&laptop, "make build").await.unwrap(),
-        Response::Written
-    );
-    assert_eq!(laptop.clipboard(), "make build");
+    for config in [explicit, by_default] {
+        let laptop = Server::with_memory("password123", config).await;
+
+        assert_eq!(sandbox.read(&laptop).await.unwrap(), Response::Denied);
+        assert_eq!(
+            sandbox.write(&laptop, "make build").await.unwrap(),
+            Response::Written
+        );
+        assert_eq!(laptop.clipboard(), "make build");
+    }
 }
 
 #[tokio::test]

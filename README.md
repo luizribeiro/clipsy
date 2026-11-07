@@ -37,8 +37,7 @@ On the laptop, in `~/.config/clipsy/config.toml`:
 ```toml
 [clients.devbox]
 id = "<devbox's node id>"
-read = true
-write = true
+read = true   # write is on by default, read is opt-in
 ```
 
 On the devbox:

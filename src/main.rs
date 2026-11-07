@@ -159,8 +159,9 @@ async fn request(context: &Context, server: ServerTarget, request: Request) -> R
             Ok(())
         }
         Response::Denied => bail!(
-            "server {id} does not allow this machine to {}",
-            action(&request)
+            "server {id} does not allow this machine to {}; its config needs `{} = true` for this client",
+            action(&request),
+            permission(&request)
         ),
         Response::Failed { reason } => {
             bail!("server {id} could not {}: {reason}", action(&request))
@@ -172,6 +173,13 @@ fn action(request: &Request) -> &'static str {
     match request {
         Request::Write { .. } => "write its clipboard",
         Request::Read => "read its clipboard",
+    }
+}
+
+fn permission(request: &Request) -> &'static str {
+    match request {
+        Request::Write { .. } => "write",
+        Request::Read => "read",
     }
 }
 
