@@ -78,11 +78,6 @@
       (system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          linuxDependencies = with pkgs; [
-            libxcb
-          ];
-          buildInputs = with nixpkgs.lib; [ ]
-          ++ optionals pkgs.stdenv.hostPlatform.isLinux linuxDependencies;
         in
         {
           checks.config =
@@ -109,24 +104,24 @@
             pname = "clipsy";
             version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
             src = ./.;
-            cargoHash = "sha256-dQUyThZxNfTzCxq0s9VZe631i1ijgE1bl4lTXMaxgs4=";
-            inherit buildInputs;
+            cargoHash = "sha256-n6L2GTWeCAV16m3goqS20oHHJcYtZXBiFwu0moU7eA8=";
+            nativeCheckInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.xvfb ];
+            preCheck = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+              Xvfb :99 -nolisten tcp &
+              export DISPLAY=:99 CLIPSY_SYSTEM_CLIPBOARD_TESTS=1
+            '';
             # Binding an iroh endpoint segfaults inside the macOS build sandbox.
             cargoTestFlags = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ "--lib" ];
             checkFlags = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
               "--skip=net::tests::binds_with_the_given_identity"
             ];
-            nativeBuildInputs = [ ]
-            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.python3 ];
           };
 
           devShell = devenv.lib.mkShell {
             inherit inputs pkgs;
             modules = [
               ({ lib, pkgs, ... }: {
-                packages = buildInputs ++ (with pkgs; [
-                  git
-                ]);
+                packages = [ pkgs.git ];
                 languages.rust.enable = true;
               })
             ];

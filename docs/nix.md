@@ -24,5 +24,7 @@ programs.clipsy.keyFile = "/run/secrets/clipsy";
 
 On Linux the server runs as a systemd user service tied to
 `graphical-session.target`, so your session has to export `DISPLAY` or
-`WAYLAND_DISPLAY` to the user manager (GNOME-based sessions do). On macOS
-it's a launchd user agent.
+`WAYLAND_DISPLAY` to the user manager (GNOME-based sessions do). Under
+Wayland clipsy needs a compositor with the data-control protocol (e.g.
+wlroots-based ones or KDE Plasma); otherwise it falls back to X11, which
+needs `DISPLAY` for XWayland. On macOS it's a launchd user agent.

@@ -125,7 +125,7 @@ async fn serve(context: Context) -> Result<()> {
     }
     let config_path = context.config_path;
     let service = ClipboardService::new(
-        Arc::new(SystemClipboard),
+        Arc::new(SystemClipboard::default()),
         move || load_config(config_path.as_deref()),
         Timeouts::default(),
     );
