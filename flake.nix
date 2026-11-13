@@ -53,7 +53,7 @@
         services.clipsy = {
           enable = true;
           allowedClients = {
-            devbox = { id = devboxId; read = true; };
+            devbox = { id = devboxId; read = true; readConcealed = true; };
             sandbox.id = sandboxId;
           };
         };
@@ -97,6 +97,7 @@
               ''
                 HOME=$TMPDIR ${self.packages.${system}.default}/bin/clipsy --config $withDefaultKey id > /dev/null
                 grep -qx 'key_file = "/run/secrets/clipsy-key"' $full
+                grep -qx 'read_concealed = true' $full
                 touch $out
               '';
 

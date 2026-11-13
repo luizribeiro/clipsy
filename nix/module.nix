@@ -21,6 +21,11 @@ let
         default = false;
         description = "Whether the client may read this machine's clipboard. Off by default, since the clipboard often holds secrets.";
       };
+      readConcealed = mkOption {
+        type = types.bool;
+        default = false;
+        description = "Whether the client may read entries that password managers mark as concealed. Needs `read` too.";
+      };
       write = mkOption {
         type = types.bool;
         default = true;
@@ -96,6 +101,11 @@ in
       key_file = config.programs.clipsy.keyFile;
       default_server = config.programs.clipsy.defaultServer;
       servers = config.programs.clipsy.servers;
-      clients = config.services.clipsy.allowedClients;
+      clients = lib.mapAttrs
+        (_: client: {
+          inherit (client) id read write;
+          read_concealed = client.readConcealed;
+        })
+        config.services.clipsy.allowedClients;
     });
 }

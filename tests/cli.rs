@@ -245,9 +245,30 @@ async fn write_argument_then_read_round_trips_through_the_binary() {
 
     assert!(written.status.success(), "{}", stderr(&written));
     assert_eq!(stdout(&written), "");
-    assert_eq!(laptop.clipboard(), Entry::plain("git push --force-with-lease"));
+    assert_eq!(
+        laptop.clipboard(),
+        Entry::plain("git push --force-with-lease")
+    );
     assert!(read.status.success(), "{}", stderr(&read));
     assert_eq!(stdout(&read), "git push --force-with-lease");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn reading_a_concealed_entry_explains_read_concealed() {
+    let devbox = Sandbox::new();
+    let laptop = LoopbackServer::start("", &client("devbox", &devbox.id(), true, true)).await;
+    laptop.clipboard.write(Entry::concealed("hunter2")).unwrap();
+
+    let output = devbox.run(&["read", "--server", &laptop.target()]);
+
+    assert!(!output.status.success());
+    assert_eq!(stdout(&output), "");
+    assert!(
+        stderr(&output).contains("holds a concealed entry")
+            && stderr(&output).contains("read_concealed = true"),
+        "{}",
+        stderr(&output)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -255,7 +276,13 @@ async fn concealed_write_marks_the_entry_on_the_server() {
     let devbox = Sandbox::new();
     let laptop = LoopbackServer::start("old", &client("devbox", &devbox.id(), false, true)).await;
 
-    let written = devbox.run(&["write", "--concealed", "--server", &laptop.target(), "hunter2"]);
+    let written = devbox.run(&[
+        "write",
+        "--concealed",
+        "--server",
+        &laptop.target(),
+        "hunter2",
+    ]);
 
     assert!(written.status.success(), "{}", stderr(&written));
     assert_eq!(laptop.clipboard(), Entry::concealed("hunter2"));
@@ -510,7 +537,9 @@ fn serve_without_a_display_warns_that_the_clipboard_is_unavailable() {
 
     assert!(
         served.stderr.contains("opening clipboard")
-            && served.stderr.contains("requests will fail until the clipboard is available"),
+            && served
+                .stderr
+                .contains("requests will fail until the clipboard is available"),
         "{}",
         served.stderr
     );

@@ -27,6 +27,8 @@ pub struct Client {
     pub id: EndpointId,
     #[serde(default)]
     pub read: bool,
+    #[serde(default)]
+    pub read_concealed: bool,
     #[serde(default = "allowed")]
     pub write: bool,
 }
@@ -249,11 +251,13 @@ relay_url = "https://relay.example.com"
 [clients.devbox]
 id = "{devbox}"
 read = true
+read_concealed = true
 write = true
 
 [clients.sandbox]
 id = "{sandbox}"
 read = false
+read_concealed = false
 write = true
 
 [servers]
@@ -301,6 +305,7 @@ desktop = "{desktop}"
         assert_eq!(config.resolve_server(None).unwrap().id, laptop());
         assert_eq!(config.client(&devbox()).unwrap().0, "devbox");
         assert!(!config.client(&sandbox()).unwrap().1.read);
+        assert!(config.client(&devbox()).unwrap().1.read_concealed);
     }
 
     #[test]
@@ -348,6 +353,20 @@ desktop = "{desktop}"
         let (_, client) = config.client(&devbox()).unwrap();
 
         assert!(!client.read && client.write);
+        assert!(!client.read_concealed);
+    }
+
+    #[test]
+    fn read_concealed_is_opt_in_per_client() {
+        let config = Config::parse(&format!(
+            "[clients.devbox]\nid = \"{}\"\nread = true\nread_concealed = true\n",
+            devbox()
+        ))
+        .unwrap();
+
+        let (_, client) = config.client(&devbox()).unwrap();
+
+        assert!(client.read_concealed);
     }
 
     #[test]
@@ -712,11 +731,8 @@ desktop = "{desktop}"
 
     #[test]
     fn has_clients_reflects_the_clients_table() {
-        let with_client = Config::parse(&format!(
-            "[clients.devbox]\nid = \"{}\"\n",
-            laptop()
-        ))
-        .unwrap();
+        let with_client =
+            Config::parse(&format!("[clients.devbox]\nid = \"{}\"\n", laptop())).unwrap();
 
         assert!(with_client.has_clients());
         assert!(!Config::default().has_clients());
@@ -726,7 +742,10 @@ desktop = "{desktop}"
     fn unknown_server_error_hides_node_id_parser_details() {
         let config = servers_only(None, &[("laptop", laptop())]);
 
-        let err = config.resolve_server(Some("nosuch")).unwrap_err().to_string();
+        let err = config
+            .resolve_server(Some("nosuch"))
+            .unwrap_err()
+            .to_string();
 
         assert_eq!(
             err,

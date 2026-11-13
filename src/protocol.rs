@@ -20,6 +20,7 @@ pub enum Response {
     Written,
     Content { content: String },
     Denied,
+    Concealed,
     Failed { reason: String },
 }
 
@@ -111,6 +112,7 @@ mod tests {
         vec![
             (r#""Written""#, Response::Written),
             (r#""Denied""#, Response::Denied),
+            (r#""Concealed""#, Response::Concealed),
             (
                 r#"{"Content":{"content":"hi"}}"#,
                 Response::Content {

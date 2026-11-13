@@ -132,6 +132,7 @@ impl ClipboardService {
             return failed("server is shutting down");
         };
         let clipboard = self.clipboard.clone();
+        let name = name.to_owned();
         let outcome = tokio::task::spawn_blocking(move || {
             let _turn = turn;
             match request {
@@ -141,8 +142,15 @@ impl ClipboardService {
                         concealed,
                     })
                     .map(|()| Response::Written),
-                Request::Read => clipboard.read().map(|entry| Response::Content {
-                    content: entry.text,
+                Request::Read => clipboard.read().map(|entry| {
+                    if entry.concealed && !client.read_concealed {
+                        println!("withheld a concealed entry from {name}; it lacks read_concealed");
+                        Response::Concealed
+                    } else {
+                        Response::Content {
+                            content: entry.text,
+                        }
+                    }
                 }),
             }
         })

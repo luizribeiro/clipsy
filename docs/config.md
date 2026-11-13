@@ -8,6 +8,23 @@ merged, so a user config hides the system one.
 The server re-reads its config on every connection. To revoke a client,
 delete its entry. No restart needed.
 
+## Passwords
+
+Password managers (1Password, Bitwarden, KeePassXC and others) mark what
+they copy as concealed: `org.nspasteboard.ConcealedType` on macOS,
+`x-kde-passwordManagerHint` on Linux. The server won't hand a concealed
+entry to a client unless that client has both permissions:
+
+```toml
+[clients.devbox]
+id = "<node id>"
+read = true
+read_concealed = true
+```
+
+Going the other way, `clipsy write --concealed` marks what it writes the
+same way, so clipboard managers and history on the server skip it.
+
 ## Your own relay
 
 By default clipsy uses n0's public relays, and n0's DNS to find servers by

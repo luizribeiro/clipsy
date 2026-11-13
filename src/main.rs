@@ -192,6 +192,9 @@ async fn request(context: &Context, server: ServerTarget, request: Request) -> R
             action(&request),
             permission(&request)
         ),
+        Response::Concealed => bail!(
+            "server {id} holds a concealed entry (e.g. from a password manager); its config needs `read_concealed = true` for this client to read it"
+        ),
         Response::Failed { reason } => {
             bail!("server {id} could not {}: {reason}", action(&request))
         }

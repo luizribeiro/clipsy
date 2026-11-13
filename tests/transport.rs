@@ -217,6 +217,47 @@ async fn unknown_client_is_refused_with_its_id() {
     assert_eq!(laptop.clipboard(), "password123");
 }
 
+async fn read_from_server_holding(entry: Entry, read_concealed: bool) -> Response {
+    let devbox = Machine::new().await;
+    let config = format!(
+        "{}read_concealed = {read_concealed}\n",
+        client_entry("devbox", devbox.id(), true, true)
+    );
+    let laptop = Server::start(MemoryClipboard::holding(entry), config).await;
+    devbox.read(&laptop).await.unwrap()
+}
+
+#[tokio::test]
+async fn concealed_entry_is_withheld_by_default() {
+    let response = read_from_server_holding(Entry::concealed("hunter2"), false).await;
+
+    assert_eq!(response, Response::Concealed);
+}
+
+#[tokio::test]
+async fn concealed_entry_is_served_to_clients_allowed_to_read_it() {
+    let response = read_from_server_holding(Entry::concealed("hunter2"), true).await;
+
+    assert_eq!(
+        response,
+        Response::Content {
+            content: "hunter2".into()
+        }
+    );
+}
+
+#[tokio::test]
+async fn plain_entry_is_served_without_read_concealed() {
+    let response = read_from_server_holding(Entry::plain("ls -la"), false).await;
+
+    assert_eq!(
+        response,
+        Response::Content {
+            content: "ls -la".into()
+        }
+    );
+}
+
 #[tokio::test]
 async fn write_only_client_cannot_read() {
     let sandbox = Machine::new().await;
