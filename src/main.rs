@@ -14,7 +14,7 @@ use std::sync::Arc;
 use tokio::signal::unix::{signal, SignalKind};
 
 #[derive(Debug, Parser)]
-#[command(name = "clipsy", about = "A clipboard synchronizer", long_about = None)]
+#[command(name = "clipsy", version, about = "A clipboard synchronizer", long_about = None)]
 struct Cli {
     /// Config file [default: ~/.config/clipsy/config.toml, then /etc/clipsy/config.toml]
     #[arg(long, global = true, env = "CLIPSY_CONFIG")]

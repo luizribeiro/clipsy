@@ -446,3 +446,13 @@ fn serve_announces_its_id_and_stops_cleanly_on_sigterm() {
     );
     assert!(status.success(), "{status}");
 }
+
+#[test]
+fn version_flag_prints_crate_version() {
+    let output = Sandbox::new().run(&["--version"]);
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        format!("clipsy {}\n", env!("CARGO_PKG_VERSION"))
+    );
+}
