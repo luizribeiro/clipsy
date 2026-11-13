@@ -1,0 +1,76 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: shellcheck .github/scripts/pair.sh scripts/clipsy-copy clipsy.tmux
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CLIPSY_SYSTEM_CLIPBOARD_TESTS: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Install plugin test dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y neovim tmux xvfb
+      - name: Install plugin test dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install neovim tmux
+      - name: Test (Linux, X11)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a cargo test
+      - name: Test (macOS)
+        if: runner.os == 'macOS'
+        run: cargo test
+      - name: Lint macOS-only code
+        if: runner.os == 'macOS'
+        run: cargo clippy --all-targets -- -D warnings
+
+  wayland:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: sudo apt-get update && sudo apt-get install -y sway
+      - run: cargo test --test system_clipboard --no-run
+      - name: Test against a headless sway with no X11 to fall back on
+        run: |
+          XDG_RUNTIME_DIR=$(mktemp -d)
+          export XDG_RUNTIME_DIR
+          chmod 700 "$XDG_RUNTIME_DIR"
+          WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 \
+            sway --config /dev/null > sway.log 2>&1 &
+          socket=
+          for _ in $(seq 50); do
+            socket=$(find "$XDG_RUNTIME_DIR" -maxdepth 1 -type s -name 'wayland-*' -printf '%f\n' | head -n1)
+            [ -n "$socket" ] && break
+            sleep 0.2
+          done
+          [ -n "$socket" ] || { cat sway.log; exit 1; }
+          env -u DISPLAY WAYLAND_DISPLAY="$socket" CLIPSY_SYSTEM_CLIPBOARD_TESTS=1 \
+            cargo test --test system_clipboard || { cat sway.log; exit 1; }
+
