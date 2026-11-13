@@ -382,11 +382,16 @@ dependencies = [
  "clap",
  "data-encoding",
  "iroh",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "serde",
  "serde_json",
  "tempfile",
  "tokio",
  "toml",
+ "wl-clipboard-rs",
+ "x11rb",
 ]
 
 [[package]]

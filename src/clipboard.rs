@@ -43,21 +43,44 @@ pub trait Clipboard: Send + Sync + 'static {
 pub trait Handle: Send + 'static {
     fn get_text(&mut self) -> Result<String, arboard::Error>;
     fn set_entry(&mut self, entry: Entry) -> Result<(), arboard::Error>;
+    fn is_concealed(&mut self) -> Result<bool, arboard::Error>;
 }
 
-impl Handle for arboard::Clipboard {
+pub struct Native {
+    clipboard: arboard::Clipboard,
+    detector: crate::concealed::Detector,
+}
+
+impl Native {
+    fn open() -> Result<Self, arboard::Error> {
+        Ok(Self {
+            clipboard: arboard::Clipboard::new()?,
+            detector: Default::default(),
+        })
+    }
+}
+
+impl Handle for Native {
     fn get_text(&mut self) -> Result<String, arboard::Error> {
-        arboard::Clipboard::get_text(self)
+        self.clipboard.get_text()
     }
 
     fn set_entry(&mut self, entry: Entry) -> Result<(), arboard::Error> {
-        let set = self.set();
+        let set = self.clipboard.set();
         let set = if entry.concealed {
             crate::concealed::mark(set)
         } else {
             set
         };
         set.text(entry.text)
+    }
+
+    fn is_concealed(&mut self) -> Result<bool, arboard::Error> {
+        self.detector
+            .is_concealed()
+            .map_err(|description| arboard::Error::Unknown {
+                description: format!("checking whether the entry is concealed: {description}"),
+            })
     }
 }
 
@@ -67,14 +90,14 @@ type Opener<H> = Box<dyn Fn() -> Result<H, arboard::Error> + Send + Sync>;
 /// handle owns the selection, so dropping it would discard what was written.
 /// A handle that fails is dropped and reopened on the next request, so the
 /// server survives a restarted X server or compositor.
-pub struct SystemClipboard<H: Handle = arboard::Clipboard> {
+pub struct SystemClipboard<H: Handle = Native> {
     handle: Mutex<Option<H>>,
     open: Opener<H>,
 }
 
 impl Default for SystemClipboard {
     fn default() -> Self {
-        Self::with_opener(arboard::Clipboard::new)
+        Self::with_opener(Native::open)
     }
 }
 
@@ -113,7 +136,12 @@ impl<H: Handle> SystemClipboard<H> {
 
 impl<H: Handle> Clipboard for SystemClipboard<H> {
     fn read(&self) -> Result<Entry> {
-        self.with("reading clipboard", |handle| handle.get_text().map(Entry::plain))
+        self.with("reading clipboard", |handle| {
+            let concealed_before = handle.is_concealed()?;
+            let text = handle.get_text()?;
+            let concealed = concealed_before || handle.is_concealed()?;
+            Ok(Entry { text, concealed })
+        })
     }
 
     fn write(&self, entry: Entry) -> Result<()> {
@@ -191,6 +219,29 @@ mod tests {
     }
 
     #[test]
+    fn reads_report_concealed_entries() {
+        let (clipboard, _) = scripted(Script {
+            entry: Entry::concealed("hunter2"),
+            ..Script::default()
+        });
+
+        assert_eq!(clipboard.read().unwrap(), Entry::concealed("hunter2"));
+    }
+
+    #[test]
+    fn entry_concealed_at_either_check_around_the_read_counts_as_concealed() {
+        for checks in [[true, false], [false, true]] {
+            let (clipboard, _) = scripted(Script {
+                entry: Entry::plain("hunter2"),
+                concealed_checks: checks.into(),
+                ..Script::default()
+            });
+
+            assert!(clipboard.read().unwrap().concealed, "{checks:?}");
+        }
+    }
+
+    #[test]
     fn concealed_writes_reach_the_handle_marked() {
         let (clipboard, script) = scripted(Script::default());
 
@@ -205,6 +256,7 @@ mod tests {
         failing_opens: usize,
         failing_ops: Vec<arboard::Error>,
         entry: Entry,
+        concealed_checks: std::collections::VecDeque<bool>,
     }
 
     struct FakeHandle(Arc<Mutex<Script>>);
@@ -230,6 +282,14 @@ mod tests {
             self.op()?;
             self.0.lock().unwrap().entry = entry;
             Ok(())
+        }
+
+        fn is_concealed(&mut self) -> Result<bool, arboard::Error> {
+            let mut script = self.0.lock().unwrap();
+            if let Some(next) = script.concealed_checks.pop_front() {
+                return Ok(next);
+            }
+            Ok(script.entry.concealed)
         }
     }
 
