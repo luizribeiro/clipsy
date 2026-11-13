@@ -105,6 +105,7 @@
             version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
             src = ./.;
             cargoHash = "sha256-n6L2GTWeCAV16m3goqS20oHHJcYtZXBiFwu0moU7eA8=";
+            postPatch = "patchShebangs scripts clipsy.tmux";
             nativeCheckInputs = [ pkgs.neovim pkgs.tmux ]
               ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.xvfb ];
             preCheck = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
