@@ -16,6 +16,15 @@ See [how clipsy compares](docs/alternatives.md).
 ## Install
 
 ```bash
+brew install luizribeiro/tap/clipsy
+```
+
+On the machine that runs the server, `brew services start clipsy` keeps
+`clipsy serve` running in the background.
+
+Or build it with cargo:
+
+```bash
 cargo install --git https://github.com/luizribeiro/clipsy
 ```
 
