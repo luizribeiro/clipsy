@@ -81,7 +81,15 @@ set -g @plugin 'luizribeiro/clipsy'
 ```
 
 With these, yanking in nvim (the `+` and `*` registers) and copying in
-tmux go to the server. They need `clipsy` on your `PATH`.
+tmux go to the server, and pasting from `+` or `*` in nvim reads from it
+(which needs `read = true` for this client on the server). They need
+`clipsy` on your `PATH`.
+
+The plugins only send to the server from SSH sessions or when
+`CLIPSY_SERVER` is set, so the same dotfiles leave the clipboard alone on
+the machine running the server. tmux decides per session on each copy,
+using the `SSH_CONNECTION` it refreshes when you attach. Set
+`CLIPSY_ENABLED=1` or `CLIPSY_ENABLED=0` to override that.
 
 ## Docs
 

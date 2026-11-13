@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+clipsy_enabled() {
+  if [ -n "${CLIPSY_ENABLED+set}" ]; then
+    [ "$CLIPSY_ENABLED" = 1 ]
+  else
+    [ -n "${SSH_CONNECTION:-}" ] || [ -n "${CLIPSY_SERVER:-}" ]
+  fi
+}
+
+if clipsy_enabled; then
+  exec clipsy write
+fi
+cat > /dev/null

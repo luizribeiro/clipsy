@@ -105,7 +105,8 @@
             version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
             src = ./.;
             cargoHash = "sha256-n6L2GTWeCAV16m3goqS20oHHJcYtZXBiFwu0moU7eA8=";
-            nativeCheckInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.xvfb ];
+            nativeCheckInputs = [ pkgs.neovim pkgs.tmux ]
+              ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.xvfb ];
             preCheck = pkgs.lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
               Xvfb :99 -nolisten tcp &
               export DISPLAY=:99 CLIPSY_SYSTEM_CLIPBOARD_TESTS=1
@@ -121,7 +122,7 @@
             inherit inputs pkgs;
             modules = [
               ({ lib, pkgs, ... }: {
-                packages = [ pkgs.git ];
+                packages = with pkgs; [ git neovim tmux ];
                 languages.rust.enable = true;
               })
             ];
