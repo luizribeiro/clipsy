@@ -74,3 +74,29 @@ jobs:
           env -u DISPLAY WAYLAND_DISPLAY="$socket" CLIPSY_SYSTEM_CLIPBOARD_TESTS=1 \
             cargo test --test system_clipboard || { cat sway.log; exit 1; }
 
+  pair:
+    name: ${{ matrix.role }} on ${{ matrix.os }} (${{ matrix.pair }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { pair: macos-serves-linux, role: server, os: macos-latest }
+          - { pair: macos-serves-linux, role: client, os: ubuntu-latest }
+          - { pair: linux-serves-macos, role: server, os: ubuntu-latest }
+          - { pair: linux-serves-macos, role: client, os: macos-latest }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - run: cargo build --release
+      - name: Install X11 tools
+        if: runner.os == 'Linux' && matrix.role == 'server'
+        run: sudo apt-get update && sudo apt-get install -y xvfb xclip
+      - name: Serve on a virtual X display
+        if: runner.os == 'Linux' && matrix.role == 'server'
+        run: xvfb-run -a .github/scripts/pair.sh server ${{ matrix.pair }}
+      - name: Run ${{ matrix.role }}
+        if: runner.os != 'Linux' || matrix.role != 'server'
+        run: .github/scripts/pair.sh ${{ matrix.role }} ${{ matrix.pair }}
