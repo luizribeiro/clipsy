@@ -11,6 +11,15 @@ doesn't protect:
   that client whatever is on your clipboard, so it is off unless you set
   `read = true`. Leave it off for machines that only need to send things
   your way.
+- Even with `read`, entries a password manager marks as concealed are
+  withheld unless the client also has `read_concealed = true`. That relies
+  on the password manager marking them; one that doesn't looks like
+  ordinary text.
+- `write` lets that client replace your clipboard at any time, which is
+  the point when it's your devbox or an agent sending you a command. It
+  also means a compromised client can swap in something you'll paste
+  later, like a command into a terminal. Grant `write` only to machines
+  you'd let type into your terminal, and look at what you paste.
 - Unlike an SSH reverse forward, the server is reachable whenever it's
   running, not only while you're logged in. But only by machines holding
   a listed key. If one of those keys leaks, it has that client's
