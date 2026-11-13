@@ -18,17 +18,33 @@ fn test_timeouts() -> Timeouts {
     }
 }
 
+fn patient_timeouts() -> Timeouts {
+    Timeouts {
+        exchange: Duration::from_secs(30),
+        ..test_timeouts()
+    }
+}
+
 struct Machine {
     endpoint: Endpoint,
+    timeouts: Timeouts,
 }
 
 impl Machine {
     async fn new() -> Self {
+        Self::with_timeouts(test_timeouts()).await
+    }
+
+    async fn patient() -> Self {
+        Self::with_timeouts(patient_timeouts()).await
+    }
+
+    async fn with_timeouts(timeouts: Timeouts) -> Self {
         let endpoint = Network::LocalOnly
             .bind(SecretKey::generate(), vec![])
             .await
             .unwrap();
-        Self { endpoint }
+        Self { endpoint, timeouts }
     }
 
     fn id(&self) -> EndpointId {
@@ -36,7 +52,7 @@ impl Machine {
     }
 
     async fn send(&self, server: &Server, request: Request) -> Result<Response> {
-        send_request(&self.endpoint, server.addr(), &request, &test_timeouts()).await
+        send_request(&self.endpoint, server.addr(), &request, &self.timeouts).await
     }
 
     async fn write(&self, server: &Server, content: &str) -> Result<Response> {
@@ -159,8 +175,13 @@ async fn allowed_client_reads_server_clipboard() {
 
 #[tokio::test]
 async fn large_unicode_content_round_trips() {
-    let devbox = Machine::new().await;
-    let laptop = Server::with_memory("", allow("devbox", &devbox)).await;
+    let devbox = Machine::patient().await;
+    let laptop = Server::start_with(
+        MemoryClipboard::default(),
+        allow("devbox", &devbox),
+        patient_timeouts(),
+    )
+    .await;
     let content = "héllo 📋 \"quoted\"\n".repeat(60_000);
 
     devbox.write(&laptop, &content).await.unwrap();
@@ -356,7 +377,12 @@ async fn server_drops_client_that_never_opens_a_stream() {
 #[tokio::test]
 async fn server_refuses_connections_beyond_its_limit() {
     let devbox = Machine::new().await;
-    let laptop = Server::with_memory("", allow("devbox", &devbox)).await;
+    let laptop = Server::start_with(
+        MemoryClipboard::default(),
+        allow("devbox", &devbox),
+        patient_timeouts(),
+    )
+    .await;
     let mut stalled = Vec::new();
     for _ in 0..MAX_CONCURRENT_CONNECTIONS {
         stalled.push(devbox.stall(&laptop).await);
@@ -411,14 +437,10 @@ async fn garbage_request_gets_failed_response() {
 #[tokio::test]
 async fn oversized_request_is_rejected_without_touching_clipboard() {
     let devbox = Machine::new().await;
-    let patient = Timeouts {
-        exchange: Duration::from_secs(30),
-        ..test_timeouts()
-    };
     let laptop = Server::start_with(
         MemoryClipboard::new("secret"),
         allow("devbox", &devbox),
-        patient,
+        patient_timeouts(),
     )
     .await;
     let conn = devbox.connect_raw(&laptop).await;
@@ -441,9 +463,14 @@ async fn oversized_request_is_rejected_without_touching_clipboard() {
 
 #[tokio::test]
 async fn clipboard_too_large_to_send_is_reported() {
-    let devbox = Machine::new().await;
+    let devbox = Machine::patient().await;
     let huge = "x".repeat(17 * 1024 * 1024);
-    let laptop = Server::with_memory(&huge, allow("devbox", &devbox)).await;
+    let laptop = Server::start_with(
+        MemoryClipboard::new(huge),
+        allow("devbox", &devbox),
+        patient_timeouts(),
+    )
+    .await;
 
     let response = devbox.read(&laptop).await.unwrap();
 
