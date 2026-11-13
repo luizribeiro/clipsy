@@ -6,6 +6,7 @@ use anyhow::{anyhow, Result};
 use iroh::endpoint::Connection;
 use iroh::protocol::{AcceptError, ProtocolHandler};
 use iroh::EndpointId;
+use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -14,6 +15,7 @@ use tokio::time::timeout;
 
 pub const MAX_CONCURRENT_CONNECTIONS: usize = 8;
 const REFUSAL_LOG_INTERVAL: Duration = Duration::from_secs(60);
+const REFUSAL_LOG_NODES: usize = 16;
 
 type ConfigLoader = dyn Fn() -> Result<Config> + Send + Sync;
 
@@ -37,6 +39,21 @@ pub fn access(config: Result<Config>, remote: &EndpointId) -> Access {
     }
 }
 
+#[derive(Default)]
+struct RefusalLog(HashMap<EndpointId, Instant>);
+
+impl RefusalLog {
+    fn should_log(&mut self, remote: EndpointId, now: Instant) -> bool {
+        self.0
+            .retain(|_, at| now.duration_since(*at) < REFUSAL_LOG_INTERVAL);
+        if self.0.contains_key(&remote) || self.0.len() >= REFUSAL_LOG_NODES {
+            return false;
+        }
+        self.0.insert(remote, now);
+        true
+    }
+}
+
 #[derive(Clone)]
 pub struct ClipboardService {
     clipboard: Arc<dyn Clipboard>,
@@ -44,7 +61,7 @@ pub struct ClipboardService {
     timeouts: Timeouts,
     connections: Arc<Semaphore>,
     clipboard_access: Arc<Semaphore>,
-    last_refusal_log: Arc<Mutex<Option<Instant>>>,
+    refusal_log: Arc<Mutex<RefusalLog>>,
 }
 
 impl fmt::Debug for ClipboardService {
@@ -65,7 +82,7 @@ impl ClipboardService {
             timeouts,
             connections: Arc::new(Semaphore::new(MAX_CONCURRENT_CONNECTIONS)),
             clipboard_access: Arc::new(Semaphore::new(1)),
-            last_refusal_log: Arc::new(Mutex::new(None)),
+            refusal_log: Arc::default(),
         }
     }
 
@@ -79,15 +96,11 @@ impl ClipboardService {
 
     fn refuse(&self, conn: &Connection, why: &str) -> Result<(), AcceptError> {
         conn.close(close::NOT_ALLOWED, b"not allowed");
-        let mut last = self
-            .last_refusal_log
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if last.is_none_or(|at| at.elapsed() >= REFUSAL_LOG_INTERVAL) {
-            *last = Some(Instant::now());
+        let remote = conn.remote_id();
+        let mut log = self.refusal_log.lock().unwrap_or_else(|e| e.into_inner());
+        if log.should_log(remote, Instant::now()) {
             println!(
-                "refused {}: {why} (further refusals muted for {REFUSAL_LOG_INTERVAL:?})",
-                conn.remote_id()
+                "refused {remote}: {why} (further refusals of this node muted for {REFUSAL_LOG_INTERVAL:?})"
             );
         }
         Ok(())
@@ -194,6 +207,42 @@ mod tests {
             id(3),
             id(4)
         ))
+    }
+
+    #[test]
+    fn refusals_are_logged_once_per_node_per_interval() {
+        let mut log = RefusalLog::default();
+        let start = Instant::now();
+
+        assert!(log.should_log(id(7), start));
+        assert!(!log.should_log(id(7), start + Duration::from_secs(5)));
+        assert!(log.should_log(id(8), start + Duration::from_secs(5)));
+        assert!(log.should_log(id(7), start + REFUSAL_LOG_INTERVAL));
+    }
+
+    #[test]
+    fn refusal_log_stops_logging_new_nodes_at_its_cap() {
+        let mut log = RefusalLog::default();
+        let start = Instant::now();
+        let logged = (0..=u8::MAX)
+            .filter(|seed| log.should_log(id(*seed), start))
+            .count();
+
+        assert_eq!(logged, REFUSAL_LOG_NODES);
+        assert!(log.should_log(id(0), start + REFUSAL_LOG_INTERVAL));
+    }
+
+    #[test]
+    fn refusal_log_forgets_nodes_after_the_interval() {
+        let mut log = RefusalLog::default();
+        let start = Instant::now();
+        for seed in 10..20 {
+            log.should_log(id(seed), start);
+        }
+
+        log.should_log(id(7), start + REFUSAL_LOG_INTERVAL);
+
+        assert_eq!(log.0.len(), 1);
     }
 
     #[test]
