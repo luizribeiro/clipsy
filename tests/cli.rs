@@ -411,6 +411,7 @@ fn malformed_relay_url_is_rejected() {
 struct Served {
     announcement: String,
     listening: String,
+    stderr: String,
     status: std::process::ExitStatus,
 }
 
@@ -418,6 +419,7 @@ fn serve_until_signalled(sandbox: &Sandbox, signal: &str) -> Served {
     let mut child = sandbox
         .command(&["serve", "--relay-url", "https://127.0.0.1:1"])
         .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .spawn()
         .unwrap();
     let mut stdout = std::io::BufReader::new(child.stdout.take().unwrap());
@@ -440,9 +442,12 @@ fn serve_until_signalled(sandbox: &Sandbox, signal: &str) -> Served {
         );
         std::thread::sleep(Duration::from_millis(20));
     };
+    let mut stderr = String::new();
+    std::io::Read::read_to_string(&mut child.stderr.take().unwrap(), &mut stderr).unwrap();
     Served {
         announcement,
         listening,
+        stderr,
         status,
     }
 }
@@ -463,6 +468,41 @@ fn serve_announces_its_id_and_stops_cleanly_on_sigterm() {
         served.listening
     );
     assert!(served.status.success(), "{}", served.status);
+}
+
+#[test]
+fn serve_warns_when_no_clients_are_configured() {
+    let served = serve_until_signalled(&Sandbox::new(), "-TERM");
+
+    assert!(
+        served
+            .stderr
+            .contains("warning: the config has no [clients], so every connection will be refused"),
+        "{}",
+        served.stderr
+    );
+}
+
+#[test]
+fn serve_with_clients_does_not_warn_about_them() {
+    let laptop = Sandbox::with_config(&format!("[clients.devbox]\nid = \"{}\"\n", laptop_id()));
+
+    let served = serve_until_signalled(&laptop, "-TERM");
+
+    assert!(!served.stderr.contains("[clients]"), "{}", served.stderr);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn serve_without_a_display_warns_that_the_clipboard_is_unavailable() {
+    let served = serve_until_signalled(&Sandbox::new(), "-TERM");
+
+    assert!(
+        served.stderr.contains("opening clipboard")
+            && served.stderr.contains("requests will fail until the clipboard is available"),
+        "{}",
+        served.stderr
+    );
 }
 
 #[test]

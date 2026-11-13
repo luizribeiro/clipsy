@@ -128,6 +128,7 @@ async fn serve(context: Context) -> Result<()> {
 
 async fn start_serving(context: Context) -> Result<Router> {
     let clipboard = Arc::new(SystemClipboard::default());
+    warn_if_unusable(&context.config, &clipboard);
     let endpoint = context
         .network
         .bind(context.secret()?, vec![ALPN.to_vec()])
@@ -143,6 +144,15 @@ async fn start_serving(context: Context) -> Result<Router> {
         Timeouts::default(),
     );
     Ok(Router::builder(endpoint).accept(ALPN, service).spawn())
+}
+
+fn warn_if_unusable(config: &Config, clipboard: &SystemClipboard) {
+    if !config.has_clients() {
+        eprintln!("warning: the config has no [clients], so every connection will be refused");
+    }
+    if let Err(e) = clipboard.open() {
+        eprintln!("warning: {e:#}; requests will fail until the clipboard is available");
+    }
 }
 
 fn shutdown_signal() -> Result<impl std::future::Future<Output = ()>> {

@@ -98,6 +98,10 @@ impl Config {
         Self::load(path.as_deref())
     }
 
+    pub fn has_clients(&self) -> bool {
+        !self.clients.is_empty()
+    }
+
     pub fn client(&self, id: &EndpointId) -> Option<(&str, &Client)> {
         self.clients
             .iter()
@@ -703,6 +707,18 @@ desktop = "{desktop}"
             err.to_string().contains("unknown server `garbage`"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn has_clients_reflects_the_clients_table() {
+        let with_client = Config::parse(&format!(
+            "[clients.devbox]\nid = \"{}\"\n",
+            laptop()
+        ))
+        .unwrap();
+
+        assert!(with_client.has_clients());
+        assert!(!Config::default().has_clients());
     }
 
     #[test]
