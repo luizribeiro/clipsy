@@ -105,7 +105,7 @@
             pname = "clipsy";
             version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
             src = ./.;
-            cargoHash = "sha256-cY74u/BSU8W3X7JagF7Rb8MJZLrXNyIFTTcxdQTtUSE=";
+            cargoHash = "sha256-wUcfyoyST6NlUr2xB6wBEO9gJiSgySH2Rci0xyTooXc=";
             postPatch = "patchShebangs scripts clipsy.tmux";
             nativeCheckInputs = [ pkgs.neovim pkgs.tmux ]
               ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.xvfb ];
