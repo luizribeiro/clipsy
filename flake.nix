@@ -107,7 +107,7 @@
 
           packages.default = pkgs.rustPlatform.buildRustPackage {
             pname = "clipsy";
-            version = "0.1.0";
+            version = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package.version;
             src = ./.;
             cargoHash = "sha256-dQUyThZxNfTzCxq0s9VZe631i1ijgE1bl4lTXMaxgs4=";
             inherit buildInputs;
