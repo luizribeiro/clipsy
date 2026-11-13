@@ -34,6 +34,9 @@ enum Command {
     Write {
         #[command(flatten)]
         target: Target,
+        /// Mark the entry as a password so clipboard history on the server skips it
+        #[arg(long)]
+        concealed: bool,
         /// The content to write; read from stdin when omitted
         content: Option<String>,
     },
@@ -95,13 +98,17 @@ async fn main() -> Result<()> {
     let context = Context::load(&cli)?;
     match cli.command {
         Command::Serve => serve(context).await,
-        Command::Write { target, content } => {
+        Command::Write {
+            target,
+            concealed,
+            content,
+        } => {
             let server = context.server(&target)?;
             let content = match content {
                 Some(content) => content,
                 None => read_stdin()?,
             };
-            request(&context, server, Request::Write { content }).await
+            request(&context, server, Request::Write { content, concealed }).await
         }
         Command::Read { target } => {
             let server = context.server(&target)?;

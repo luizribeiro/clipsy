@@ -1,14 +1,48 @@
 use anyhow::{anyhow, Result};
 use std::sync::{Mutex, MutexGuard};
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Entry {
+    pub text: String,
+    pub concealed: bool,
+}
+
+impl Entry {
+    pub fn plain(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            concealed: false,
+        }
+    }
+
+    pub fn concealed(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            concealed: true,
+        }
+    }
+}
+
+impl From<&str> for Entry {
+    fn from(text: &str) -> Self {
+        Self::plain(text)
+    }
+}
+
+impl From<String> for Entry {
+    fn from(text: String) -> Self {
+        Self::plain(text)
+    }
+}
+
 pub trait Clipboard: Send + Sync + 'static {
-    fn read(&self) -> Result<String>;
-    fn write(&self, content: String) -> Result<()>;
+    fn read(&self) -> Result<Entry>;
+    fn write(&self, entry: Entry) -> Result<()>;
 }
 
 pub trait Handle: Send + 'static {
     fn get_text(&mut self) -> Result<String, arboard::Error>;
-    fn set_text(&mut self, content: String) -> Result<(), arboard::Error>;
+    fn set_entry(&mut self, entry: Entry) -> Result<(), arboard::Error>;
 }
 
 impl Handle for arboard::Clipboard {
@@ -16,8 +50,14 @@ impl Handle for arboard::Clipboard {
         arboard::Clipboard::get_text(self)
     }
 
-    fn set_text(&mut self, content: String) -> Result<(), arboard::Error> {
-        arboard::Clipboard::set_text(self, content)
+    fn set_entry(&mut self, entry: Entry) -> Result<(), arboard::Error> {
+        let set = self.set();
+        let set = if entry.concealed {
+            crate::concealed::mark(set)
+        } else {
+            set
+        };
+        set.text(entry.text)
     }
 }
 
@@ -72,12 +112,12 @@ impl<H: Handle> SystemClipboard<H> {
 }
 
 impl<H: Handle> Clipboard for SystemClipboard<H> {
-    fn read(&self) -> Result<String> {
-        self.with("reading clipboard", Handle::get_text)
+    fn read(&self) -> Result<Entry> {
+        self.with("reading clipboard", |handle| handle.get_text().map(Entry::plain))
     }
 
-    fn write(&self, content: String) -> Result<()> {
-        self.with("writing clipboard", |handle| handle.set_text(content))
+    fn write(&self, entry: Entry) -> Result<()> {
+        self.with("writing clipboard", |handle| handle.set_entry(entry))
     }
 }
 
@@ -89,14 +129,18 @@ fn clipboard_error(action: &str, error: arboard::Error) -> anyhow::Error {
 }
 
 #[derive(Default)]
-pub struct MemoryClipboard(Mutex<String>);
+pub struct MemoryClipboard(Mutex<Entry>);
 
 impl MemoryClipboard {
     pub fn new(content: impl Into<String>) -> Self {
-        Self(Mutex::new(content.into()))
+        Self::holding(Entry::plain(content))
     }
 
-    fn content(&self) -> MutexGuard<'_, String> {
+    pub fn holding(entry: Entry) -> Self {
+        Self(Mutex::new(entry))
+    }
+
+    fn content(&self) -> MutexGuard<'_, Entry> {
         self.0
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -104,12 +148,12 @@ impl MemoryClipboard {
 }
 
 impl Clipboard for MemoryClipboard {
-    fn read(&self) -> Result<String> {
+    fn read(&self) -> Result<Entry> {
         Ok(self.content().clone())
     }
 
-    fn write(&self, content: String) -> Result<()> {
-        *self.content() = content;
+    fn write(&self, entry: Entry) -> Result<()> {
+        *self.content() = entry;
         Ok(())
     }
 }
@@ -123,7 +167,7 @@ mod tests {
     fn memory_clipboard_starts_with_initial_content() {
         assert_eq!(
             MemoryClipboard::new("ssh devbox").read().unwrap(),
-            "ssh devbox"
+            Entry::plain("ssh devbox")
         );
     }
 
@@ -134,7 +178,25 @@ mod tests {
         clipboard.write("first".into()).unwrap();
         clipboard.write("second\n".into()).unwrap();
 
-        assert_eq!(clipboard.read().unwrap(), "second\n");
+        assert_eq!(clipboard.read().unwrap(), Entry::plain("second\n"));
+    }
+
+    #[test]
+    fn memory_clipboard_keeps_whether_an_entry_is_concealed() {
+        let clipboard = MemoryClipboard::default();
+
+        clipboard.write(Entry::concealed("hunter2")).unwrap();
+
+        assert_eq!(clipboard.read().unwrap(), Entry::concealed("hunter2"));
+    }
+
+    #[test]
+    fn concealed_writes_reach_the_handle_marked() {
+        let (clipboard, script) = scripted(Script::default());
+
+        clipboard.write(Entry::concealed("hunter2")).unwrap();
+
+        assert_eq!(script.lock().unwrap().entry, Entry::concealed("hunter2"));
     }
 
     #[derive(Default)]
@@ -142,7 +204,7 @@ mod tests {
         opens: usize,
         failing_opens: usize,
         failing_ops: Vec<arboard::Error>,
-        text: String,
+        entry: Entry,
     }
 
     struct FakeHandle(Arc<Mutex<Script>>);
@@ -161,12 +223,12 @@ mod tests {
     impl Handle for FakeHandle {
         fn get_text(&mut self) -> Result<String, arboard::Error> {
             self.op()?;
-            Ok(self.0.lock().unwrap().text.clone())
+            Ok(self.0.lock().unwrap().entry.text.clone())
         }
 
-        fn set_text(&mut self, content: String) -> Result<(), arboard::Error> {
+        fn set_entry(&mut self, entry: Entry) -> Result<(), arboard::Error> {
             self.op()?;
-            self.0.lock().unwrap().text = content;
+            self.0.lock().unwrap().entry = entry;
             Ok(())
         }
     }
@@ -195,10 +257,10 @@ mod tests {
         let (clipboard, script) = scripted(Script::default());
 
         for i in 0..50 {
-            clipboard.write(format!("yank {i}")).unwrap();
+            clipboard.write(format!("yank {i}").into()).unwrap();
         }
 
-        assert_eq!(clipboard.read().unwrap(), "yank 49");
+        assert_eq!(clipboard.read().unwrap().text, "yank 49");
         assert_eq!(opens(&script), 1);
     }
 
@@ -213,7 +275,7 @@ mod tests {
         clipboard.write("second".into()).unwrap();
 
         assert!(err.starts_with("opening clipboard: "), "{err}");
-        assert_eq!(clipboard.read().unwrap(), "second");
+        assert_eq!(clipboard.read().unwrap().text, "second");
         assert_eq!(opens(&script), 2);
     }
 
@@ -230,7 +292,7 @@ mod tests {
         clipboard.write("after restart".into()).unwrap();
 
         assert_eq!(err, "writing clipboard: Unknown error while interacting with the clipboard: X11 connection lost");
-        assert_eq!(clipboard.read().unwrap(), "after restart");
+        assert_eq!(clipboard.read().unwrap().text, "after restart");
         assert_eq!(opens(&script), 2);
     }
 

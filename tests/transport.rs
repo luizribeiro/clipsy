@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use clipsy::clipboard::{Clipboard, MemoryClipboard};
+use clipsy::clipboard::{Clipboard, Entry, MemoryClipboard};
 use clipsy::config::Config;
 use clipsy::net::{close, send_request, Network, Timeouts};
 use clipsy::protocol::{Request, Response, ALPN};
@@ -57,7 +57,14 @@ impl Machine {
 
     async fn write(&self, server: &Server, content: &str) -> Result<Response> {
         let content = content.to_owned();
-        self.send(server, Request::Write { content }).await
+        self.send(
+            server,
+            Request::Write {
+                content,
+                concealed: false,
+            },
+        )
+        .await
     }
 
     async fn read(&self, server: &Server) -> Result<Response> {
@@ -124,7 +131,7 @@ impl Server {
     }
 
     fn clipboard(&self) -> String {
-        self.clipboard.read().unwrap()
+        self.clipboard.read().unwrap().text
     }
 
     fn set_config(&self, config: String) {
@@ -270,11 +277,11 @@ async fn broken_config_refuses_everyone() {
 struct BrokenClipboard;
 
 impl Clipboard for BrokenClipboard {
-    fn read(&self) -> Result<String> {
+    fn read(&self) -> Result<Entry> {
         bail!("clipboard holds an image")
     }
 
-    fn write(&self, _: String) -> Result<()> {
+    fn write(&self, _: Entry) -> Result<()> {
         bail!("pasteboard unavailable")
     }
 }
@@ -483,12 +490,12 @@ async fn clipboard_too_large_to_send_is_reported() {
 struct HungClipboard;
 
 impl Clipboard for HungClipboard {
-    fn read(&self) -> Result<String> {
+    fn read(&self) -> Result<Entry> {
         std::thread::sleep(Duration::from_secs(5));
         Ok("too late".into())
     }
 
-    fn write(&self, _: String) -> Result<()> {
+    fn write(&self, _: Entry) -> Result<()> {
         std::thread::sleep(Duration::from_secs(5));
         Ok(())
     }

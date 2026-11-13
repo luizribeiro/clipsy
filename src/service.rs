@@ -1,4 +1,4 @@
-use crate::clipboard::Clipboard;
+use crate::clipboard::{Clipboard, Entry};
 use crate::config::{Client, Config};
 use crate::net::{close, Timeouts};
 use crate::protocol::{read_message, write_message, Request, Response};
@@ -135,10 +135,15 @@ impl ClipboardService {
         let outcome = tokio::task::spawn_blocking(move || {
             let _turn = turn;
             match request {
-                Request::Write { content } => clipboard.write(content).map(|()| Response::Written),
-                Request::Read => clipboard
-                    .read()
-                    .map(|content| Response::Content { content }),
+                Request::Write { content, concealed } => clipboard
+                    .write(Entry {
+                        text: content,
+                        concealed,
+                    })
+                    .map(|()| Response::Written),
+                Request::Read => clipboard.read().map(|entry| Response::Content {
+                    content: entry.text,
+                }),
             }
         })
         .await;
@@ -158,7 +163,14 @@ fn failed(reason: impl Display) -> Response {
 
 fn describe(request: &Request) -> String {
     match request {
-        Request::Write { content } => format!("write of {} bytes", content.len()),
+        Request::Write {
+            content,
+            concealed: false,
+        } => format!("write of {} bytes", content.len()),
+        Request::Write {
+            content,
+            concealed: true,
+        } => format!("concealed write of {} bytes", content.len()),
         Request::Read => "read".into(),
     }
 }

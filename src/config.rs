@@ -356,6 +356,7 @@ desktop = "{desktop}"
         let read = Request::Read;
         let write = Request::Write {
             content: "ls -la\n".into(),
+            concealed: false,
         };
 
         let (_, devbox) = config.client(&devbox()).unwrap();

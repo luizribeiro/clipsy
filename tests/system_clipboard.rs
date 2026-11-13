@@ -19,7 +19,7 @@ fn many_writes_reuse_one_clipboard_connection() {
 
     for i in 0..1000 {
         let content = format!("yank {i}\nwith ünïcode");
-        clipboard.write(content.clone()).unwrap();
-        assert_eq!(clipboard.read().unwrap(), content);
+        clipboard.write(content.clone().into()).unwrap();
+        assert_eq!(clipboard.read().unwrap().text, content);
     }
 }

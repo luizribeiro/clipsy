@@ -1,4 +1,4 @@
-use clipsy::clipboard::{Clipboard, MemoryClipboard};
+use clipsy::clipboard::{Clipboard, Entry, MemoryClipboard};
 use clipsy::config::Config;
 use clipsy::net::{Network, Timeouts};
 use clipsy::protocol::ALPN;
@@ -221,7 +221,7 @@ impl LoopbackServer {
         format!("{}@{}:{port}", endpoint.id(), Ipv4Addr::LOCALHOST)
     }
 
-    fn clipboard(&self) -> String {
+    fn clipboard(&self) -> Entry {
         self.clipboard.read().unwrap()
     }
 }
@@ -245,9 +245,20 @@ async fn write_argument_then_read_round_trips_through_the_binary() {
 
     assert!(written.status.success(), "{}", stderr(&written));
     assert_eq!(stdout(&written), "");
-    assert_eq!(laptop.clipboard(), "git push --force-with-lease");
+    assert_eq!(laptop.clipboard(), Entry::plain("git push --force-with-lease"));
     assert!(read.status.success(), "{}", stderr(&read));
     assert_eq!(stdout(&read), "git push --force-with-lease");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn concealed_write_marks_the_entry_on_the_server() {
+    let devbox = Sandbox::new();
+    let laptop = LoopbackServer::start("old", &client("devbox", &devbox.id(), false, true)).await;
+
+    let written = devbox.run(&["write", "--concealed", "--server", &laptop.target(), "hunter2"]);
+
+    assert!(written.status.success(), "{}", stderr(&written));
+    assert_eq!(laptop.clipboard(), Entry::concealed("hunter2"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -262,7 +273,7 @@ async fn write_without_argument_reads_stdin_like_tmux_copy_command() {
     );
 
     assert!(output.status.success(), "{}", stderr(&output));
-    assert_eq!(laptop.clipboard(), selection);
+    assert_eq!(laptop.clipboard(), Entry::plain(selection));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -273,7 +284,7 @@ async fn empty_stdin_clears_the_clipboard() {
     let output = devbox.run_with_stdin(&["write", "--server", &laptop.target()], b"");
 
     assert!(output.status.success(), "{}", stderr(&output));
-    assert_eq!(laptop.clipboard(), "");
+    assert_eq!(laptop.clipboard(), Entry::plain(""));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -342,7 +353,7 @@ async fn unpaired_machine_is_told_its_id() {
         "{}",
         stderr(&output)
     );
-    assert_eq!(laptop.clipboard(), "password123");
+    assert_eq!(laptop.clipboard(), Entry::plain("password123"));
 }
 
 #[test]

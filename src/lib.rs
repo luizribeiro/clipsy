@@ -1,4 +1,5 @@
 pub mod clipboard;
+mod concealed;
 pub mod config;
 pub mod keys;
 pub mod net;

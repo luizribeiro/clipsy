@@ -7,7 +7,11 @@ pub const MAX_ENCODED_MESSAGE_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Request {
-    Write { content: String },
+    Write {
+        content: String,
+        #[serde(default)]
+        concealed: bool,
+    },
     Read,
 }
 
@@ -80,16 +84,27 @@ mod tests {
         decode(&encode(message).await).await.unwrap()
     }
 
-    const WRITE_WIRE: &str = r#"{"Write":{"content":"hi\n"}}"#;
+    const WRITE_WIRE: &str = r#"{"Write":{"content":"hi\n","concealed":false}}"#;
 
     fn write_request() -> Request {
         Request::Write {
             content: "hi\n".into(),
+            concealed: false,
         }
     }
 
     fn wire_requests() -> Vec<(&'static str, Request)> {
-        vec![(r#""Read""#, Request::Read), (WRITE_WIRE, write_request())]
+        vec![
+            (r#""Read""#, Request::Read),
+            (WRITE_WIRE, write_request()),
+            (
+                r#"{"Write":{"content":"hunter2","concealed":true}}"#,
+                Request::Write {
+                    content: "hunter2".into(),
+                    concealed: true,
+                },
+            ),
+        ]
     }
 
     fn wire_responses() -> Vec<(&'static str, Response)> {
@@ -139,6 +154,7 @@ mod tests {
     async fn round_trips_large_content() {
         let request = Request::Write {
             content: "fn main() {}\n".repeat(50_000),
+            concealed: false,
         };
         assert_eq!(round_trip(&request).await, request);
     }
@@ -147,6 +163,7 @@ mod tests {
     async fn round_trips_empty_content() {
         let request = Request::Write {
             content: String::new(),
+            concealed: false,
         };
         assert_eq!(round_trip(&request).await, request);
     }
@@ -156,6 +173,7 @@ mod tests {
         let (mut client, mut server) = tokio::io::duplex(1024);
         let request = Request::Write {
             content: "x".repeat(10_000),
+            concealed: false,
         };
         let send = async {
             write_message(&mut client, &request).await.unwrap();

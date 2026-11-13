@@ -47,6 +47,7 @@ async fn round_trip_through_relay_only(network: Network) {
     let started = Instant::now();
     let request = Request::Write {
         content: "hello over iroh".into(),
+        concealed: false,
     };
     let addr = network.server_addr(server_id.into());
     let response = send_request(&client, addr, &request, &Timeouts::default())
@@ -58,7 +59,7 @@ async fn round_trip_through_relay_only(network: Network) {
     );
 
     assert_eq!(response, Response::Written);
-    assert_eq!(clipboard.read().unwrap(), "hello over iroh");
+    assert_eq!(clipboard.read().unwrap().text, "hello over iroh");
     client.close().await;
     router.shutdown().await.unwrap();
 }
