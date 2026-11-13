@@ -131,9 +131,9 @@ impl Config {
         if let Some(id) = self.servers.get(name) {
             return Ok((*id).into());
         }
-        let id = name.parse::<EndpointId>().map_err(|e| {
+        let id = name.parse::<EndpointId>().map_err(|_| {
             anyhow::anyhow!(
-                "unknown server `{name}` ({e}); known servers: {}",
+                "unknown server `{name}`: not a name under [servers] nor a node id; known servers: {}",
                 self.server_names()
             )
         })?;
@@ -144,7 +144,7 @@ impl Config {
         let mut ids = self.servers.values();
         match (ids.next(), ids.next()) {
             (Some(id), None) => Ok((*id).into()),
-            (None, _) => bail!("no server configured; pass --server or set CLIPSY_SERVER"),
+            (None, _) => bail!("no server configured; add one under [servers] in the config, pass --server or set CLIPSY_SERVER"),
             _ => bail!(
                 "several servers configured ({}); pass --server, set CLIPSY_SERVER or set default_server",
                 self.server_names()
@@ -444,6 +444,7 @@ desktop = "{desktop}"
         let err = Config::default().resolve_server(None).unwrap_err();
 
         assert!(err.to_string().contains("no server configured"), "{err}");
+        assert!(err.to_string().contains("[servers]"), "{err}");
     }
 
     #[test]
@@ -701,6 +702,18 @@ desktop = "{desktop}"
         assert!(
             err.to_string().contains("unknown server `garbage`"),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn unknown_server_error_hides_node_id_parser_details() {
+        let config = servers_only(None, &[("laptop", laptop())]);
+
+        let err = config.resolve_server(Some("nosuch")).unwrap_err().to_string();
+
+        assert_eq!(
+            err,
+            "unknown server `nosuch`: not a name under [servers] nor a node id; known servers: laptop"
         );
     }
 }
