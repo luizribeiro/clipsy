@@ -10,12 +10,17 @@ fn plugin_root() -> &'static Path {
 }
 
 fn path_with(dir: &Path) -> String {
-    format!("{}:{}", dir.display(), std::env::var("PATH").unwrap_or_default())
+    format!(
+        "{}:{}",
+        dir.display(),
+        std::env::var("PATH").unwrap_or_default()
+    )
 }
 
 fn nvim_sets_clipboard(vars: &[(&str, &str)]) -> bool {
     let home = TempDir::new().unwrap();
-    let check = "call writefile([exists('g:clipboard') ? g:clipboard.name : 'none'], '/dev/stdout')";
+    let check =
+        "call writefile([exists('g:clipboard') ? g:clipboard.name : 'none'], '/dev/stdout')";
     let output = Command::new("nvim")
         .args(["--headless", "--clean", "--cmd"])
         .arg(format!("set rtp^={}", plugin_root().display()))
@@ -66,7 +71,11 @@ fn tmux_copy_sends(vars: &[(&str, &str)]) -> bool {
 fn tmux_plugin_points_copy_command_at_the_wrapper() {
     let bin = TempDir::new().unwrap();
     let calls = bin.path().join("calls");
-    stub(bin.path(), "tmux", &format!("printf '%s\\n' \"$@\" > {}", calls.display()));
+    stub(
+        bin.path(),
+        "tmux",
+        &format!("printf '%s\\n' \"$@\" > {}", calls.display()),
+    );
 
     let status = Command::new("bash")
         .arg(plugin_root().join("clipsy.tmux"))
@@ -110,12 +119,27 @@ fn copy_line_in(socket_dir: &Path, path: &str, session: &str) {
 fn tmux_sends_copies_only_from_sessions_attached_over_ssh() {
     let dir = TempDir::new().unwrap();
     let sent = dir.path().join("sent");
-    stub(dir.path(), "clipsy", &format!("cat >> {}; echo >> {}", sent.display(), sent.display()));
+    stub(
+        dir.path(),
+        "clipsy",
+        &format!("cat >> {}; echo >> {}", sent.display(), sent.display()),
+    );
     let path = path_with(dir.path());
     let start = |name: &str, ssh: Option<&str>| {
         let mut command = Command::new("tmux");
         command
-            .args(["-f", "/dev/null", "new-session", "-d", "-s", name, "-x", "80", "-y", "10"])
+            .args([
+                "-f",
+                "/dev/null",
+                "new-session",
+                "-d",
+                "-s",
+                name,
+                "-x",
+                "80",
+                "-y",
+                "10",
+            ])
             .arg(format!("echo copied-from-{name}; sleep 30"))
             .env_clear()
             .env("TMUX_TMPDIR", dir.path())
