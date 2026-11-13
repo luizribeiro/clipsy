@@ -25,7 +25,8 @@ jobs:
 
   homebrew:
     needs: github-release
-    permissions: {}
+    permissions:
+      contents: read
     uses: luizribeiro/homebrew-tap/.github/workflows/bump-formula.yml@main
     with:
       formula: clipsy
