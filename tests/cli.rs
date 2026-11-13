@@ -408,25 +408,27 @@ fn malformed_relay_url_is_rejected() {
     assert!(stderr(&output).contains("relay-url"), "{}", stderr(&output));
 }
 
-#[test]
-fn serve_announces_its_id_and_stops_cleanly_on_sigterm() {
-    let laptop = Sandbox::new();
-    let expected = format!("serving clipboard as {}", laptop.id());
-    let mut child = laptop
+struct Served {
+    announcement: String,
+    listening: String,
+    status: std::process::ExitStatus,
+}
+
+fn serve_until_signalled(sandbox: &Sandbox, signal: &str) -> Served {
+    let mut child = sandbox
         .command(&["serve", "--relay-url", "https://127.0.0.1:1"])
         .stdout(Stdio::piped())
         .spawn()
         .unwrap();
-
     let mut stdout = std::io::BufReader::new(child.stdout.take().unwrap());
     let mut announcement = String::new();
-    let mut listening = String::new();
     std::io::BufRead::read_line(&mut stdout, &mut announcement).unwrap();
-    std::io::BufRead::read_line(&mut stdout, &mut listening).unwrap();
     Command::new("kill")
-        .args(["-TERM", &child.id().to_string()])
+        .args([signal, &child.id().to_string()])
         .status()
         .unwrap();
+    let mut listening = String::new();
+    std::io::BufRead::read_line(&mut stdout, &mut listening).unwrap();
     let started = Instant::now();
     let status = loop {
         if let Some(status) = child.try_wait().unwrap() {
@@ -434,17 +436,40 @@ fn serve_announces_its_id_and_stops_cleanly_on_sigterm() {
         }
         assert!(
             started.elapsed() < Duration::from_secs(10),
-            "serve ignored SIGTERM"
+            "serve ignored {signal}"
         );
         std::thread::sleep(Duration::from_millis(20));
     };
+    Served {
+        announcement,
+        listening,
+        status,
+    }
+}
 
-    assert_eq!(announcement.trim(), expected);
-    assert!(
-        listening.starts_with("listening on UDP port "),
-        "{listening}"
+#[test]
+fn serve_announces_its_id_and_stops_cleanly_on_sigterm() {
+    let laptop = Sandbox::new();
+
+    let served = serve_until_signalled(&laptop, "-TERM");
+
+    assert_eq!(
+        served.announcement.trim(),
+        format!("serving clipboard as {}", laptop.id())
     );
-    assert!(status.success(), "{status}");
+    assert!(
+        served.listening.starts_with("listening on UDP port "),
+        "{}",
+        served.listening
+    );
+    assert!(served.status.success(), "{}", served.status);
+}
+
+#[test]
+fn serve_stops_cleanly_on_sigint() {
+    let served = serve_until_signalled(&Sandbox::new(), "-INT");
+
+    assert!(served.status.success(), "{}", served.status);
 }
 
 #[test]

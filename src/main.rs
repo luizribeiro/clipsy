@@ -115,6 +115,19 @@ async fn main() -> Result<()> {
 }
 
 async fn serve(context: Context) -> Result<()> {
+    let shutdown = shutdown_signal()?;
+    tokio::pin!(shutdown);
+    let router = tokio::select! {
+        router = start_serving(context) => router?,
+        () = &mut shutdown => return Ok(()),
+    };
+    shutdown.await;
+    router.shutdown().await?;
+    Ok(())
+}
+
+async fn start_serving(context: Context) -> Result<Router> {
+    let clipboard = Arc::new(SystemClipboard::default());
     let endpoint = context
         .network
         .bind(context.secret()?, vec![ALPN.to_vec()])
@@ -125,23 +138,22 @@ async fn serve(context: Context) -> Result<()> {
     }
     let config_path = context.config_path;
     let service = ClipboardService::new(
-        Arc::new(SystemClipboard::default()),
+        clipboard,
         move || load_config(config_path.as_deref()),
         Timeouts::default(),
     );
-    let router = Router::builder(endpoint).accept(ALPN, service).spawn();
-    shutdown_requested().await?;
-    router.shutdown().await?;
-    Ok(())
+    Ok(Router::builder(endpoint).accept(ALPN, service).spawn())
 }
 
-async fn shutdown_requested() -> Result<()> {
+fn shutdown_signal() -> Result<impl std::future::Future<Output = ()>> {
     let mut terminate = signal(SignalKind::terminate())?;
-    tokio::select! {
-        interrupted = tokio::signal::ctrl_c() => interrupted?,
-        _ = terminate.recv() => {}
-    }
-    Ok(())
+    let mut interrupt = signal(SignalKind::interrupt())?;
+    Ok(async move {
+        tokio::select! {
+            _ = terminate.recv() => {}
+            _ = interrupt.recv() => {}
+        }
+    })
 }
 
 async fn request(context: &Context, server: ServerTarget, request: Request) -> Result<()> {
