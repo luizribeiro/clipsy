@@ -70,6 +70,19 @@ pub async fn write_message<T: Serialize>(
     writer: &mut (impl AsyncWrite + Unpin),
     message: &T,
 ) -> Result<()> {
+    let versioned = Outgoing {
+        clipsy: VERSION,
+        message,
+    };
+    write_limited(writer, &versioned, MAX_ENCODED_MESSAGE_BYTES).await
+}
+
+/// Replies in the format clipsy 0.2 and older read, so they can show why
+/// they were turned away.
+pub async fn write_unversioned<T: Serialize>(
+    writer: &mut (impl AsyncWrite + Unpin),
+    message: &T,
+) -> Result<()> {
     write_limited(writer, message, MAX_ENCODED_MESSAGE_BYTES).await
 }
 
@@ -82,10 +95,7 @@ async fn write_limited<T: Serialize>(
     message: &T,
     limit: u64,
 ) -> Result<()> {
-    let bytes = serde_json::to_vec(&Outgoing {
-        clipsy: VERSION,
-        message,
-    })?;
+    let bytes = serde_json::to_vec(message)?;
     if bytes.len() as u64 > limit {
         bail!(
             "outgoing message is {} bytes, limit is {limit}",
@@ -153,12 +163,19 @@ mod tests {
 
     const WRITE_WIRE: &str = r#"{"Write":{"content":"hi\n","concealed":false}}"#;
 
-    fn versioned(version: &str, message: &str) -> String {
+    fn versioned(message: &Request) -> Outgoing<'_, Request> {
+        Outgoing {
+            clipsy: VERSION,
+            message,
+        }
+    }
+
+    fn wire(version: &str, message: &str) -> String {
         format!(r#"{{"clipsy":"{version}","message":{message}}}"#)
     }
 
     fn current(message: &str) -> String {
-        versioned(VERSION, message)
+        wire(VERSION, message)
     }
 
     fn write_request() -> Request {
@@ -265,7 +282,7 @@ mod tests {
         let limit = wire.len() as u64;
 
         let mut written = Vec::new();
-        write_limited(&mut written, &write_request(), limit)
+        write_limited(&mut written, &versioned(&write_request()), limit)
             .await
             .unwrap();
         let read: Request = read_limited(&mut wire.as_bytes(), limit).await.unwrap();
@@ -275,11 +292,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refuses_to_send_message_one_byte_over_limit() {
+    async fn size_limit_counts_the_version_envelope() {
         let mut written = Vec::new();
-        let limit = current(WRITE_WIRE).len() as u64 - 1;
+        let fits_only_bare = WRITE_WIRE.len() as u64;
 
-        let err = write_limited(&mut written, &write_request(), limit)
+        let err = write_limited(&mut written, &versioned(&write_request()), fits_only_bare)
             .await
             .unwrap_err();
 
@@ -330,7 +347,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_message_from_another_version_names_both_versions() {
-        let err = decode::<Response>(&versioned("9.1.0", r#""Archived""#))
+        let err = decode::<Response>(&wire("9.1.0", r#""Archived""#))
             .await
             .unwrap_err();
         let shown = err.to_string();
@@ -348,7 +365,7 @@ mod tests {
 
     #[tokio::test]
     async fn known_message_from_another_version_is_accepted() {
-        let request = decode::<Request>(&versioned("9.1.0", r#""Read""#)).await;
+        let request = decode::<Request>(&wire("9.1.0", r#""Read""#)).await;
 
         assert_eq!(request.unwrap(), Request::Read);
     }
@@ -370,6 +387,16 @@ mod tests {
                 "{shown}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn unversioned_replies_use_the_bare_format() {
+        let mut bytes = Vec::new();
+        write_unversioned(&mut bytes, &Response::Denied)
+            .await
+            .unwrap();
+
+        assert_eq!(bytes, br#""Denied""#);
     }
 
     #[tokio::test]

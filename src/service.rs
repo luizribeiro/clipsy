@@ -1,9 +1,11 @@
 use crate::clipboard::{Clipboard, Entry};
 use crate::config::{Client, Config};
 use crate::net::{close, Timeouts};
-use crate::protocol::{read_message, write_message, Request, Response};
+use crate::protocol::{
+    read_message, write_message, write_unversioned, Incompatible, Request, Response, VERSION,
+};
 use anyhow::{anyhow, Result};
-use iroh::endpoint::Connection;
+use iroh::endpoint::{Connection, SendStream};
 use iroh::protocol::{AcceptError, ProtocolHandler};
 use iroh::EndpointId;
 use std::collections::HashMap;
@@ -110,15 +112,31 @@ impl ClipboardService {
         let (mut send, mut recv) = conn.accept_bi().await?;
         let request = read_message::<Request>(&mut recv).await;
         let _ = recv.stop(close::DONE);
+        if is_unversioned(&request) {
+            println!("turned away {name}: its request carried no clipsy version");
+            write_unversioned(&mut send, &failed(upgrade_client_hint())).await?;
+        } else {
+            self.reply(&mut send, name, client, request).await?;
+        }
+        send.finish()?;
+        conn.closed().await;
+        Ok(())
+    }
+
+    async fn reply(
+        &self,
+        send: &mut SendStream,
+        name: &str,
+        client: Client,
+        request: Result<Request>,
+    ) -> Result<()> {
         let response = match request {
             Ok(request) => self.respond(name, client, request).await,
             Err(e) => failed(format!("{e:#}")),
         };
-        if let Err(e) = write_message(&mut send, &response).await {
-            write_message(&mut send, &failed(format!("{e:#}"))).await?;
+        if let Err(e) = write_message(send, &response).await {
+            write_message(send, &failed(format!("{e:#}"))).await?;
         }
-        send.finish()?;
-        conn.closed().await;
         Ok(())
     }
 
@@ -161,6 +179,16 @@ impl ClipboardService {
             Err(e) => failed(format!("clipboard task failed: {e}")),
         }
     }
+}
+
+fn is_unversioned(request: &Result<Request>) -> bool {
+    request
+        .as_ref()
+        .is_err_and(|e| matches!(e.downcast_ref(), Some(Incompatible::Unversioned)))
+}
+
+pub fn upgrade_client_hint() -> String {
+    format!("this server runs clipsy {VERSION}; upgrade this client to match")
 }
 
 fn failed(reason: impl Display) -> Response {
@@ -227,6 +255,18 @@ mod tests {
             id(3),
             id(4)
         ))
+    }
+
+    #[test]
+    fn only_unversioned_requests_are_turned_away_in_the_old_format() {
+        assert!(is_unversioned(&Err(Incompatible::Unversioned.into())));
+        let newer = Incompatible::Version {
+            peer: "9.0.0".into(),
+            detail: "unknown variant".into(),
+        };
+        assert!(!is_unversioned(&Err(newer.into())));
+        assert!(!is_unversioned(&Err(anyhow::anyhow!("receiving message"))));
+        assert!(!is_unversioned(&Ok(Request::Read)));
     }
 
     #[test]

@@ -3,7 +3,7 @@ use clipsy::clipboard::{Clipboard, Entry, MemoryClipboard};
 use clipsy::config::Config;
 use clipsy::net::{close, send_request, Network, Timeouts};
 use clipsy::protocol::{Request, Response, ALPN};
-use clipsy::service::{ClipboardService, MAX_CONCURRENT_CONNECTIONS};
+use clipsy::service::{upgrade_client_hint, ClipboardService, MAX_CONCURRENT_CONNECTIONS};
 use iroh::endpoint::{ApplicationClose, Connection, ConnectionError, RecvStream, SendStream};
 use iroh::protocol::Router;
 use iroh::{Endpoint, EndpointAddr, EndpointId, SecretKey};
@@ -479,6 +479,27 @@ async fn garbage_request_gets_failed_response() {
     let response: Response = clipsy::protocol::read_message(&mut recv).await.unwrap();
 
     assert!(matches!(response, Response::Failed { .. }), "{response:?}");
+    assert_eq!(laptop.clipboard(), "secret");
+}
+
+#[tokio::test]
+async fn clients_from_clipsy_0_2_are_told_to_upgrade_in_a_reply_they_can_read() {
+    let devbox = Machine::new().await;
+    let laptop = Server::with_memory("secret", allow("devbox", &devbox)).await;
+
+    for old_request in [r#""Read""#, r#"{"Write":{"content":"overwrite"}}"#] {
+        let conn = devbox.connect_raw(&laptop).await;
+        let (mut send, mut recv) = conn.open_bi().await.unwrap();
+        send.write_all(old_request.as_bytes()).await.unwrap();
+        send.finish().unwrap();
+        let reply = recv.read_to_end(1024).await.unwrap();
+        let response: Response = serde_json::from_slice(&reply).unwrap();
+
+        let Response::Failed { reason } = response else {
+            panic!("expected failure, got {response:?}");
+        };
+        assert_eq!(reason, upgrade_client_hint());
+    }
     assert_eq!(laptop.clipboard(), "secret");
 }
 
