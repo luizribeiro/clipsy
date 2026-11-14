@@ -1,8 +1,14 @@
 use anyhow::{bail, Context, Result};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{
+    de::{DeserializeOwned, IgnoredAny},
+    Deserialize, Serialize,
+};
+use serde_json::value::RawValue;
+use std::fmt;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub const ALPN: &[u8] = b"clipsy/0";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const MAX_ENCODED_MESSAGE_BYTES: u64 = 16 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,6 +30,42 @@ pub enum Response {
     Failed { reason: String },
 }
 
+#[derive(Serialize)]
+struct Outgoing<'a, T> {
+    clipsy: &'a str,
+    message: &'a T,
+}
+
+#[derive(Deserialize)]
+struct Incoming {
+    clipsy: String,
+    message: Box<RawValue>,
+}
+
+/// A message from a peer running a different clipsy that this one can't decode.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Incompatible {
+    Unversioned,
+    Version { peer: String, detail: String },
+}
+
+impl fmt::Display for Incompatible {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unversioned => write!(
+                f,
+                "the other side sent no clipsy version, so it likely runs clipsy 0.2 or older; upgrade it to clipsy {VERSION}"
+            ),
+            Self::Version { peer, detail } => write!(
+                f,
+                "the other side runs clipsy {peer} and this is clipsy {VERSION}; run the same version on both ({detail})"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for Incompatible {}
+
 pub async fn write_message<T: Serialize>(
     writer: &mut (impl AsyncWrite + Unpin),
     message: &T,
@@ -40,7 +82,10 @@ async fn write_limited<T: Serialize>(
     message: &T,
     limit: u64,
 ) -> Result<()> {
-    let bytes = serde_json::to_vec(message)?;
+    let bytes = serde_json::to_vec(&Outgoing {
+        clipsy: VERSION,
+        message,
+    })?;
     if bytes.len() as u64 > limit {
         bail!(
             "outgoing message is {} bytes, limit is {limit}",
@@ -64,7 +109,28 @@ async fn read_limited<T: DeserializeOwned>(
     if bytes.len() as u64 > limit {
         bail!("incoming message exceeds the {limit} byte limit");
     }
-    serde_json::from_slice(&bytes).context("decoding message")
+    decode_versioned(&bytes)
+}
+
+fn decode_versioned<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
+    let incoming: Incoming = match serde_json::from_slice(bytes) {
+        Ok(incoming) => incoming,
+        Err(_) if serde_json::from_slice::<IgnoredAny>(bytes).is_ok() => {
+            return Err(Incompatible::Unversioned.into())
+        }
+        Err(e) => return Err(anyhow::Error::new(e).context("decoding message")),
+    };
+    serde_json::from_str(incoming.message.get()).map_err(|e| {
+        if incoming.clipsy == VERSION {
+            anyhow::Error::new(e).context("decoding message")
+        } else {
+            Incompatible::Version {
+                peer: incoming.clipsy,
+                detail: e.to_string(),
+            }
+            .into()
+        }
+    })
 }
 
 #[cfg(test)]
@@ -86,6 +152,14 @@ mod tests {
     }
 
     const WRITE_WIRE: &str = r#"{"Write":{"content":"hi\n","concealed":false}}"#;
+
+    fn versioned(version: &str, message: &str) -> String {
+        format!(r#"{{"clipsy":"{version}","message":{message}}}"#)
+    }
+
+    fn current(message: &str) -> String {
+        versioned(VERSION, message)
+    }
 
     fn write_request() -> Request {
         Request::Write {
@@ -131,16 +205,16 @@ mod tests {
     #[tokio::test]
     async fn requests_match_pinned_wire_format() {
         for (wire, request) in wire_requests() {
-            assert_eq!(encode(&request).await, wire);
-            assert_eq!(decode::<Request>(wire).await.unwrap(), request);
+            assert_eq!(encode(&request).await, current(wire));
+            assert_eq!(decode::<Request>(&current(wire)).await.unwrap(), request);
         }
     }
 
     #[tokio::test]
     async fn responses_match_pinned_wire_format() {
         for (wire, response) in wire_responses() {
-            assert_eq!(encode(&response).await, wire);
-            assert_eq!(decode::<Response>(wire).await.unwrap(), response);
+            assert_eq!(encode(&response).await, current(wire));
+            assert_eq!(decode::<Response>(&current(wire)).await.unwrap(), response);
         }
     }
 
@@ -187,25 +261,25 @@ mod tests {
 
     #[tokio::test]
     async fn accepts_message_exactly_at_limit() {
-        let limit = WRITE_WIRE.len() as u64;
+        let wire = current(WRITE_WIRE);
+        let limit = wire.len() as u64;
 
         let mut written = Vec::new();
         write_limited(&mut written, &write_request(), limit)
             .await
             .unwrap();
-        let read: Request = read_limited(&mut WRITE_WIRE.as_bytes(), limit)
-            .await
-            .unwrap();
+        let read: Request = read_limited(&mut wire.as_bytes(), limit).await.unwrap();
 
-        assert_eq!(written, WRITE_WIRE.as_bytes());
+        assert_eq!(written, wire.as_bytes());
         assert_eq!(read, write_request());
     }
 
     #[tokio::test]
     async fn refuses_to_send_message_one_byte_over_limit() {
         let mut written = Vec::new();
+        let limit = current(WRITE_WIRE).len() as u64 - 1;
 
-        let err = write_limited(&mut written, &write_request(), WRITE_WIRE.len() as u64 - 1)
+        let err = write_limited(&mut written, &write_request(), limit)
             .await
             .unwrap_err();
 
@@ -215,7 +289,8 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_valid_message_one_byte_over_limit() {
-        let err = read_limited::<Request>(&mut WRITE_WIRE.as_bytes(), WRITE_WIRE.len() as u64 - 1)
+        let wire = current(WRITE_WIRE);
+        let err = read_limited::<Request>(&mut wire.as_bytes(), wire.len() as u64 - 1)
             .await
             .unwrap_err();
 
@@ -223,19 +298,90 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_garbage() {
-        assert!(decode::<Request>("GET / HTTP/1.1\r\n\r\n").await.is_err());
+    async fn non_json_is_a_plain_decode_error() {
+        let truncated = current(r#"{"Write":{"content":"half"#);
+        for wire in ["GET / HTTP/1.1\r\n\r\n", "", &truncated] {
+            let err = decode::<Request>(wire).await.unwrap_err();
+
+            assert!(err.downcast_ref::<Incompatible>().is_none(), "{err:#}");
+            assert!(
+                format!("{err:#}").starts_with("decoding message"),
+                "{err:#}"
+            );
+        }
+    }
+
+    fn incompatibility(err: anyhow::Error) -> Incompatible {
+        err.downcast().expect("an incompatibility")
     }
 
     #[tokio::test]
-    async fn rejects_truncated_message() {
-        assert!(decode::<Request>(r#"{"Write":{"content":"half"#)
+    async fn unknown_message_from_the_same_version_is_a_plain_decode_error() {
+        let err = decode::<Request>(&current(r#""Delete""#))
             .await
-            .is_err());
+            .unwrap_err();
+
+        assert!(err.downcast_ref::<Incompatible>().is_none(), "{err:#}");
+        assert!(
+            format!("{err:#}").contains("unknown variant `Delete`"),
+            "{err:#}"
+        );
     }
 
     #[tokio::test]
-    async fn rejects_unknown_request() {
-        assert!(decode::<Request>(r#""Delete""#).await.is_err());
+    async fn unknown_message_from_another_version_names_both_versions() {
+        let err = decode::<Response>(&versioned("9.1.0", r#""Archived""#))
+            .await
+            .unwrap_err();
+        let shown = err.to_string();
+
+        assert!(
+            matches!(incompatibility(err), Incompatible::Version { peer, .. } if peer == "9.1.0")
+        );
+        assert!(shown.contains("clipsy 9.1.0"), "{shown}");
+        assert!(
+            shown.contains(&format!("this is clipsy {VERSION}")),
+            "{shown}"
+        );
+        assert!(shown.contains("unknown variant `Archived`"), "{shown}");
+    }
+
+    #[tokio::test]
+    async fn known_message_from_another_version_is_accepted() {
+        let request = decode::<Request>(&versioned("9.1.0", r#""Read""#)).await;
+
+        assert_eq!(request.unwrap(), Request::Read);
+    }
+
+    #[tokio::test]
+    async fn messages_from_clipsy_0_2_are_unversioned() {
+        for wire in [
+            r#""Read""#,
+            WRITE_WIRE,
+            r#"{"Failed":{"reason":"decoding message"}}"#,
+        ] {
+            let err = decode::<Request>(wire).await.unwrap_err();
+            let shown = err.to_string();
+
+            assert_eq!(incompatibility(err), Incompatible::Unversioned, "{wire}");
+            assert!(shown.contains("clipsy 0.2 or older"), "{shown}");
+            assert!(
+                shown.contains(&format!("upgrade it to clipsy {VERSION}")),
+                "{shown}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn malformed_envelopes_are_unversioned() {
+        for wire in [
+            r#"{"clipsy":1,"message":"Read"}"#,
+            r#"{"clipsy":"0.3.0"}"#,
+            "42",
+        ] {
+            let err = decode::<Request>(wire).await.unwrap_err();
+
+            assert_eq!(incompatibility(err), Incompatible::Unversioned, "{wire}");
+        }
     }
 }
