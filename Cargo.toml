@@ -1,6 +1,6 @@
 [package]
 name = "clipsy"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Sync your clipboard across machines over iroh"
 license = "MIT"
