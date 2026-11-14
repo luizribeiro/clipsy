@@ -115,8 +115,17 @@ fn copy_line_in(socket_dir: &Path, path: &str, session: &str) {
     }
 }
 
+/// Some Nix build sandboxes don't mount devpts, so tmux can't open a pane.
+fn ptys_available() -> bool {
+    !cfg!(target_os = "linux") || Path::new("/dev/pts").is_dir()
+}
+
 #[test]
 fn tmux_sends_copies_only_from_sessions_attached_over_ssh() {
+    if !ptys_available() {
+        eprintln!("skipping: tmux needs a pty and /dev/pts is missing");
+        return;
+    }
     let dir = TempDir::new().unwrap();
     let sent = dir.path().join("sent");
     stub(
